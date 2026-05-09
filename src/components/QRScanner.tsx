@@ -34,9 +34,10 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
         scannerRef.current.clear().catch(error => {
           console.error("Failed to clear html5QrcodeScanner. ", error);
         });
+        scannerRef.current = null;
       }
     };
   }, [onScan, onError]);
 
-  return <div id="qr-reader" className="w-full max-w-sm mx-auto overflow-hidden rounded-xl shadow-lg border border-gray-200"></div>;
+  return <div id="qr-reader" className="w-full max-w-sm mx-auto min-h-[300px] bg-white overflow-hidden rounded-xl shadow-lg border border-neutral-200"></div>;
 }

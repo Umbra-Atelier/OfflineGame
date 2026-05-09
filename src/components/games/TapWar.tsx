@@ -1,26 +1,31 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'motion/react';
+import { GameMessage } from '../../types';
 
-interface GameProps {
+interface TapWarProps {
   channel: RTCDataChannel;
   isHost: boolean;
+  onBackToLobby: () => void;
 }
 
-export function Game({ channel, isHost }: GameProps) {
+export function TapWar({ channel, isHost, onBackToLobby }: TapWarProps) {
   // Score goes from -50 to +50. 
   // if score > 50, Host wins. if score < -50, Guest wins.
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState<string | null>(null);
 
   const handleMessage = useCallback((event: MessageEvent) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'TAP') {
-      setScore(data.score);
-      if (data.score >= 50) setGameOver("Host wins!");
-      if (data.score <= -50) setGameOver("Joiner wins!");
-    } else if (data.type === 'REMATCH') {
-      setScore(0);
-      setGameOver(null);
+    const message = JSON.parse(event.data);
+    if (message.type === 'GAME_MESSAGE' && message.game === 'TAP_WAR') {
+      const data = message.payload;
+      if (data.type === 'TAP') {
+        setScore(data.score);
+        if (data.score >= 50) setGameOver("Host wins!");
+        if (data.score <= -50) setGameOver("Joiner wins!");
+      } else if (data.type === 'REMATCH') {
+        setScore(0);
+        setGameOver(null);
+      }
     }
   }, []);
 
@@ -46,7 +51,12 @@ export function Game({ channel, isHost }: GameProps) {
 
     // Send to peer
     if (channel.readyState === 'open') {
-      channel.send(JSON.stringify({ type: 'TAP', score: newScore }));
+      const msg: GameMessage = {
+        type: 'GAME_MESSAGE',
+        game: 'TAP_WAR',
+        payload: { type: 'TAP', score: newScore }
+      };
+      channel.send(JSON.stringify(msg));
     }
   };
 
@@ -54,7 +64,12 @@ export function Game({ channel, isHost }: GameProps) {
     setScore(0);
     setGameOver(null);
     if (channel.readyState === 'open') {
-      channel.send(JSON.stringify({ type: 'REMATCH' }));
+      const msg: GameMessage = {
+        type: 'GAME_MESSAGE',
+        game: 'TAP_WAR',
+        payload: { type: 'REMATCH' }
+      };
+      channel.send(JSON.stringify(msg));
     }
   };
 
@@ -62,7 +77,15 @@ export function Game({ channel, isHost }: GameProps) {
 
   return (
     <div className="flex flex-col items-center justify-center p-4 w-full max-w-md mx-auto min-h-[60vh] gap-8">
-      <div className="text-center">
+      <div className="flex w-full justify-between items-center">
+        <button 
+          onClick={onBackToLobby}
+          className="text-sm font-medium text-gray-500 hover:text-gray-900"
+        >
+          &larr; Lobby
+        </button>
+      </div>
+      <div className="text-center mt-[-40px]">
         <h2 className="text-2xl font-bold mb-2">Tap War!</h2>
         <p className="text-gray-500">
           You are the <span className="font-bold text-gray-800">{isHost ? 'Host' : 'Joiner'}</span>.
