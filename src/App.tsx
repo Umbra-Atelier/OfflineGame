@@ -78,8 +78,7 @@ export default function App() {
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelsRef = useRef<Map<string, RTCDataChannel>>(new Map());
 
-  // We consider ourselves host if we ever created an offer or are in the host flow
-  const isHost = appState === 'HOST_CHOOSE_NAME' || appState.startsWith('HOST') || (appState === 'LOBBY' && connectedGuests.length > 0) || (appState === 'PLAYING' && connectedGuests.length > 0);
+  const [isHostRole, setIsHostRole] = useState(false);
 
   // Broadcast to all channels
   const broadcast = (msg: any) => {
@@ -97,10 +96,10 @@ export default function App() {
         try {
           const msg: BaseMessage = JSON.parse(event.data);
           
-          if (msg.type === 'LOBBY_STATE' && !isHost) {
+          if (msg.type === 'LOBBY_STATE' && !isHostRole) {
             setSelectedGame(msg.payload.game);
             setAppState('LOBBY');
-          } else if (msg.type === 'SET_ID' && !isHost) {
+          } else if (msg.type === 'SET_ID' && !isHostRole) {
             setMyGuestId(msg.payload.id);
             setConnectedGuests(msg.payload.guests);
             setHostName(msg.payload.hostName);
@@ -126,16 +125,17 @@ export default function App() {
         });
       };
     }
-  }, [appState, isHost]);
+  }, [appState, isHostRole]);
 
   // Host sync lobby selection
   useEffect(() => {
-    if (appState === 'LOBBY' && isHost) {
+    if (appState === 'LOBBY' && isHostRole) {
       broadcast({ type: 'LOBBY_STATE', payload: { game: selectedGame } });
     }
-  }, [selectedGame, appState, isHost]);
+  }, [selectedGame, appState, isHostRole]);
 
   const startHostingFlow = () => {
+    setIsHostRole(true);
     setAppState('HOST_CHOOSE_NAME');
   };
 
@@ -183,6 +183,7 @@ export default function App() {
   };
 
   const startJoinFlow = () => {
+    setIsHostRole(false);
     setAppState('JOIN_CHOOSE_NAME');
   };
 
@@ -215,14 +216,14 @@ export default function App() {
   };
 
   const handleStartMatch = () => {
-    if (isHost) {
+    if (isHostRole) {
       broadcast({ type: 'START_GAME' });
       setAppState('PLAYING');
     }
   };
 
   const handleBackToLobby = () => {
-    if (isHost) {
+    if (isHostRole) {
       broadcast({ type: 'BACK_TO_LOBBY' });
       setAppState('LOBBY');
     }
@@ -497,7 +498,7 @@ export default function App() {
 
         {appState === 'LOBBY' && (
           <Lobby 
-            isHost={isHost} 
+            isHost={isHostRole} 
             selectedGame={selectedGame}
             onSelectGame={setSelectedGame}
             onStartGame={handleStartMatch}
@@ -509,8 +510,8 @@ export default function App() {
             {selectedGame === 'HIDDEN_ROLE' ? (
               <HiddenRole 
                 channels={channelsRef.current} 
-                isHost={isHost} 
-                myId={isHost ? 'host' : (myGuestId || 'player-joiner')}
+                isHost={isHostRole} 
+                myId={isHostRole ? 'host' : (myGuestId || 'player-joiner')}
                 myName={playerName}
                 guests={connectedGuests}
                 onBackToLobby={handleBackToLobby} 
@@ -518,20 +519,20 @@ export default function App() {
             ) : connectedGuests.length > 1 ? (
               <Tournament
                 gameType={selectedGame!}
-                myId={isHost ? 'host' : (myGuestId || 'player-joiner')}
+                myId={isHostRole ? 'host' : (myGuestId || 'player-joiner')}
                 myName={playerName}
-                players={[{id: 'host', name: isHost ? playerName : (hostName || 'Host')}, ...connectedGuests]}
-                isGlobalHost={isHost}
+                players={[{id: 'host', name: isHostRole ? playerName : (hostName || 'Host')}, ...connectedGuests]}
+                isGlobalHost={isHostRole}
                 channelsRef={channelsRef}
                 onBackToLobby={handleBackToLobby}
               />
             ) : (
               // Raw 2-player game (Host + 1 Guest)
               <>
-                {selectedGame === 'TAP_WAR' && <TapWar channel={channelsRef.current.values().next().value} isHost={isHost} onBackToLobby={handleBackToLobby} />}
-                {selectedGame === 'PONG' && <Pong channel={channelsRef.current.values().next().value} isHost={isHost} onBackToLobby={handleBackToLobby} />}
-                {selectedGame === 'CHESS' && <ChessGame channel={channelsRef.current.values().next().value} isHost={isHost} onBackToLobby={handleBackToLobby} />}
-                {selectedGame === 'CARD_BATTLE' && <CardBattleGround channel={channelsRef.current.values().next().value} isHost={isHost} onBackToLobby={handleBackToLobby} />}
+                {selectedGame === 'TAP_WAR' && <TapWar channel={channelsRef.current.values().next().value} isHost={isHostRole} onBackToLobby={handleBackToLobby} />}
+                {selectedGame === 'PONG' && <Pong channel={channelsRef.current.values().next().value} isHost={isHostRole} onBackToLobby={handleBackToLobby} />}
+                {selectedGame === 'CHESS' && <ChessGame channel={channelsRef.current.values().next().value} isHost={isHostRole} onBackToLobby={handleBackToLobby} />}
+                {selectedGame === 'CARD_BATTLE' && <CardBattleGround channel={channelsRef.current.values().next().value} isHost={isHostRole} onBackToLobby={handleBackToLobby} />}
               </>
             )}
           </div>
