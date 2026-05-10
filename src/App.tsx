@@ -43,10 +43,12 @@ export default function App() {
 
   // Audio State
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [hasInteracted, setHasInteracted] = useState(false);
 
-  // Global onClick to bind haptic feedback to all buttons natively
+  // Global onClick to bind haptic feedback and Tone JS start
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
+      if (!hasInteracted) setHasInteracted(true);
       const target = e.target as HTMLElement;
       if (target.closest('button')) {
         triggerHapticClick();
@@ -54,14 +56,14 @@ export default function App() {
     };
     document.addEventListener('click', handleGlobalClick);
     return () => document.removeEventListener('click', handleGlobalClick);
-  }, []);
+  }, [hasInteracted]);
 
   // Game state
   const [selectedGame, setSelectedGame] = useState<GameType | null>(null);
 
   // Sync music to game state
   useEffect(() => {
-    if (audioEnabled) {
+    if (audioEnabled && hasInteracted) {
        setupAudio().then(() => {
           setMuted(false);
           if (appState === 'PLAYING' && selectedGame) {
@@ -73,7 +75,7 @@ export default function App() {
     } else {
        setMuted(true);
     }
-  }, [audioEnabled, appState, selectedGame]);
+  }, [audioEnabled, appState, selectedGame, hasInteracted]);
 
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelsRef = useRef<Map<string, RTCDataChannel>>(new Map());

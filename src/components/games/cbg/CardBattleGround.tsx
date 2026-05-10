@@ -290,10 +290,18 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
     // Only place card if selected
     if (!selectedCardId) return;
     
-    // We can use e.nativeEvent.offsetX / offsetY
     const target = e.target as HTMLCanvasElement;
-    const x = (e.nativeEvent.offsetX / target.clientWidth) * MAP_W;
-    const y = (e.nativeEvent.offsetY / target.clientHeight) * MAP_H;
+    const rect = target.getBoundingClientRect();
+    let rx = (e.clientX - rect.left) / rect.width;
+    let ry = (e.clientY - rect.top) / rect.height;
+    
+    if (!isHost) {
+       rx = 1 - rx;
+       ry = 1 - ry;
+    }
+    
+    const x = rx * MAP_W;
+    const y = ry * MAP_H;
     
     // Check placement restrictions
     const card = CBG_CARDS.find(c => c.id === selectedCardId);
@@ -328,6 +336,7 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const [dragOrigin, setDragOrigin] = useState({ x: 0, y: 0 });
   
   // UI Actions
   const openChest = () => {
@@ -678,6 +687,12 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
             });
             setSelectedCardId(null);
         }
+      } else {
+        const dx = e.clientX - dragOrigin.x;
+        const dy = e.clientY - dragOrigin.y;
+        if (dx * dx + dy * dy > 100) {
+           setSelectedCardId(null);
+        }
       }
       setDraggingCardId(null);
     }
@@ -708,13 +723,32 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
        </div>
 
        {/* HUD & Hand */}
-       <div className="h-32 bg-slate-950 border-t border-slate-800 p-2 flex flex-col gap-2 relative">
+       <div className="h-32 bg-slate-950 border-t border-slate-800 p-2 flex items-center justify-between relative px-4">
           <div className="absolute top-2 right-4 font-black text-fuchsia-400 text-lg flex items-center gap-1">
              <div className="w-3 h-3 rounded-full bg-fuchsia-400 animate-pulse"/>
              {Math.floor(myElixir)}
           </div>
+
+          {/* Next Card */}
+          <div className="flex flex-col items-center gap-1 mt-4">
+             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Next</span>
+             {deckCycleRef.current[0] && (() => {
+                 const nextC = CBG_CARDS.find(card => card.id === deckCycleRef.current[0])!;
+                 return (
+                    <div className="w-12 h-16 rounded-lg flex flex-col overflow-hidden opacity-60 border border-slate-700 pointer-events-none relative">
+                       <div className="h-[55%] w-full bg-slate-700 flex items-center justify-center relative shadow-inner">
+                           <UnitPreview card={nextC} />
+                       </div>
+                       <div className="flex-1 w-full bg-slate-800 p-1 flex items-center justify-center">
+                          <span className="text-[8px] font-bold text-center leading-tight drop-shadow text-white">{nextC.name}</span>
+                       </div>
+                       <div className="absolute top-0.5 left-0.5 bg-fuchsia-500 text-white rounded-full w-4 h-4 shadow-md flex items-center justify-center text-[8px] font-black">{nextC.cost}</div>
+                    </div>
+                 );
+             })()}
+          </div>
           
-          <div className="flex justify-center gap-2 mt-2 h-full">
+          <div className="flex justify-center gap-2 h-full items-end pb-2 flex-1 ml-4">
              {hand.map((id, i) => {
                 const c = CBG_CARDS.find(card => card.id === id)!;
                 const canAfford = myElixir >= c.cost;
@@ -728,6 +762,7 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
                         setDraggingCardId(id);
                         setSelectedCardId(id);
                         setDragPos({ x: e.clientX, y: e.clientY });
+                        setDragOrigin({ x: e.clientX, y: e.clientY });
                         e.currentTarget.releasePointerCapture(e.pointerId); // let container handle move
                       }}
                       onClick={() => setSelectedCardId(isSelected ? null : id)}
