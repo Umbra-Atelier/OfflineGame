@@ -72,7 +72,6 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
         cameraId,
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
         },
         (decodedText) => {
           if (scannerRef.current?.isScanning) {
@@ -137,12 +136,15 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
     <div className="flex flex-col items-center gap-4 w-full max-w-sm mx-auto">
       
       {/* Scanner Window */}
-      <div className="w-full bg-white overflow-hidden rounded-xl shadow-lg border border-neutral-200 flex flex-col items-center">
+      <div className="w-full overflow-hidden rounded-xl shadow-lg border border-neutral-200 flex flex-col items-center bg-black relative">
         
-        <div id="qr-reader-custom" className="w-full min-h-[300px] flex items-center justify-center bg-black relative">
+        <div className="w-full relative flex items-center justify-center bg-black">
+           {/* This div is exclusively for html5-qrcode to manage */}
+           <div id="qr-reader-custom" className="w-full"></div>
+           
            {/* If not scanning and haven't requested perms, show start button overlay */}
            {!isScanning && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-900">
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-900 w-full h-full min-h-[300px]">
                 {!hasRequestedPerms ? (
                   <button 
                     onClick={requestCameras}
@@ -167,7 +169,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
 
         {/* Camera Selector */}
         {cameras.length > 0 && (
-          <div className="w-full p-3 bg-slate-100 border-t border-slate-200 flex flex-col gap-2">
+          <div className="w-full p-3 bg-slate-800 border-t border-slate-700 flex flex-col gap-2 z-20 relative">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Camera</label>
             <select 
               value={selectedCameraId}
