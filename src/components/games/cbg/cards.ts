@@ -46,4 +46,18 @@ export const CBG_CARDS: CardDef[] = [
   { id: 'c22', name: 'Twin Archers', description: 'Two ranged units', cost: 5, secret: 'double trouble', isBase: false, type: 'troop', color: '#34d399', stats: { hp: 50, damage: 15, range: 100, speed: 25, count: 2 } },
   { id: 'c23', name: 'Golem', description: 'Immense health', cost: 8, secret: 'rock monster', isBase: false, type: 'troop', color: '#475569', stats: { hp: 600, damage: 40, range: 20, speed: 10, count: 1 } },
   { id: 'c24', name: 'Healing Spell', description: 'Heals area', cost: 3, secret: 'light burst', isBase: false, type: 'spell', color: '#fecdd3', stats: { damage: -50, radius: 45 } },
+
+  // Unlockable Additional 12
+  { id: 'c25', name: 'Valkyrie', description: 'Area melee damage', cost: 4, secret: 'spin to win', isBase: false, type: 'troop', color: '#ea580c', stats: { hp: 160, damage: 30, range: 20, speed: 25, count: 1 } },
+  { id: 'c26', name: 'Bomb Cart', description: 'Explodes on impact building', cost: 3, secret: 'boom stick', isBase: false, type: 'troop', color: '#1f2937', stats: { hp: 50, damage: 200, range: 15, speed: 45, count: 1 } },
+  { id: 'c27', name: 'Ninja', description: 'Fast, double strike', cost: 4, secret: 'shadow walk', isBase: false, type: 'troop', color: '#4c1d95', stats: { hp: 90, damage: 35, range: 15, speed: 50, count: 1 } },
+  { id: 'c28', name: 'Frost Tower', description: 'Slows enemies', cost: 5, secret: 'winter hold', isBase: false, type: 'building', color: '#93c5fd', stats: { hp: 300, damage: 10, range: 90, speed: 0, count: 1 } },
+  { id: 'c29', name: 'Fire Spirits', description: 'Fragile splash units', cost: 2, secret: 'hot coals', isBase: false, type: 'troop', color: '#ef4444', stats: { hp: 10, damage: 40, range: 10, speed: 60, count: 3 } },
+  { id: 'c30', name: 'Log', description: 'Rolls and damages', cost: 2, secret: 'timber fall', isBase: false, type: 'spell', color: '#a16207', stats: { damage: 60, radius: 25 } },
+  { id: 'c31', name: 'Electro Wizard', description: 'Stuns targets', cost: 4, secret: 'shock therapy', isBase: false, type: 'troop', color: '#fef08a', stats: { hp: 60, damage: 20, range: 50, speed: 25, count: 1 } },
+  { id: 'c32', name: 'Royal Pig', description: 'Jumps river, hits towers', cost: 5, secret: 'oink oink', isBase: false, type: 'troop', color: '#fca5a5', stats: { hp: 200, damage: 45, range: 10, speed: 40, count: 1 } },
+  { id: 'c33', name: 'Tornado', description: 'Pulls enemies', cost: 3, secret: 'spin cycle', isBase: false, type: 'spell', color: '#6ee7b7', stats: { damage: 10, radius: 60 } },
+  { id: 'c34', name: 'Executioner', description: 'Piercing axe throw', cost: 5, secret: 'axe toss', isBase: false, type: 'troop', color: '#1e293b', stats: { hp: 120, damage: 40, range: 45, speed: 20, count: 1 } },
+  { id: 'c35', name: 'Cannon Cart', description: 'Mobile cannon', cost: 5, secret: 'wheel barrel', isBase: false, type: 'troop', color: '#854d0e', stats: { hp: 150, damage: 50, range: 60, speed: 20, count: 1 } },
+  { id: 'c36', name: 'Mega Knight', description: 'Huge jump damage', cost: 7, secret: 'heavy drop', isBase: false, type: 'troop', color: '#334155', stats: { hp: 450, damage: 50, range: 15, speed: 18, count: 1 } }
 ];

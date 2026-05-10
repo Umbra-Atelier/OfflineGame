@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { CardDef, CBG_CARDS } from './cards';
 import { CBGEngine, GameState, Entity } from './Engine';
-import { Play, Package, Book, Unlock, User, ArrowLeft } from 'lucide-react';
+import { Play, Package, Book, Unlock, ArrowLeft, Download, Upload, Save } from 'lucide-react';
 
 const MAP_W = 400;
 const MAP_H = 600;
@@ -17,10 +17,11 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
   const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
   const [deckIds, setDeckIds] = useState<string[]>([]);
   const [chests, setChests] = useState<number>(0);
+  const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // UI State
   const [tab, setTab] = useState<'BATTLE' | 'CARDS'>('BATTLE');
-  const [secretInput, setSecretInput] = useState('');
   const [matchState, setMatchState] = useState<'MENU' | 'PLAYING' | 'ENDED'>('MENU');
   
   // In-game state
@@ -126,6 +127,7 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
     const iWon = (isHost && winner === 0) || (!isHost && winner === 1);
     if (iWon) {
       setChests(prev => prev + 1);
+      setHasUnsavedProgress(true);
     }
   };
 
@@ -162,10 +164,48 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
           ctx.arc(e.x, e.y, e.radius * 0.5, 0, Math.PI*2);
           ctx.fill();
        } else {
-          // troop
+          // troop with more detailed geometric rendering
+          ctx.save();
+          ctx.translate(e.x, e.y);
+          
+          const t = performance.now() / 200;
+          const wobble = Math.sin(t * e.speed * 0.1 + (e.x + e.y)) * 4;
+          
+          // Draw Body
           ctx.beginPath();
-          ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2);
+          ctx.arc(0, wobble, e.radius, 0, Math.PI*2);
           ctx.fill();
+          
+          // Add distinguishing geometric shapes based on card attributes
+          ctx.fillStyle = '#cbd5e1';
+          const isMelee = e.range < 30; // Close range
+          const isBuilding = e.speed === 0;
+          
+          if (!isBuilding) {
+             if (isMelee) {
+                // Sword or Axe (melee)
+                ctx.rotate(Math.sin(t * 2) * 0.5);
+                ctx.fillRect(e.radius * 0.5, wobble - e.radius, 4, e.radius * 1.5);
+                ctx.fillStyle = '#94a3b8'; // metal tip
+                ctx.fillRect(e.radius * 0.5 - 2, wobble - e.radius - 4, 8, 8);
+             } else {
+                // Bow or Wand (ranged)
+                ctx.beginPath();
+                ctx.arc(e.radius + 2, wobble, e.radius * 0.8, -Math.PI/2, Math.PI/2);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#854d0e'; // wood color
+                ctx.stroke();
+             }
+             
+             // Simple Eyes
+             ctx.fillStyle = e.team === 0 ? 'white' : '#fecdd3';
+             const facing = e.team === 0 ? -1 : 1;
+             ctx.beginPath();
+             ctx.arc(0, wobble + (facing * e.radius * 0.4), 2, 0, Math.PI*2);
+             ctx.fill();
+          }
+
+          ctx.restore();
        }
        
        // HP bar
@@ -217,26 +257,59 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
   // UI Actions
   const openChest = () => {
     if (chests > 0) {
-      const lockedCards = CBG_CARDS.filter(c => !c.isBase); // we just give a random locked card, even if they have it, just tell them the secret
-      const card = lockedCards[Math.floor(Math.random() * lockedCards.length)];
+      const lockedCards = CBG_CARDS.filter(c => !unlockedIds.includes(c.id));
       setChests(prev => prev - 1);
-      alert(`Chest Opened! You found a card secret: "${card.secret}"\nRemember this card secret to add it to your deck!`);
+      if (lockedCards.length > 0) {
+          const card = lockedCards[Math.floor(Math.random() * lockedCards.length)];
+          setUnlockedIds(prev => [...prev, card.id]);
+          setHasUnsavedProgress(true);
+          alert(`Chest Opened! You unlocked: ${card.name}`);
+      } else {
+          alert('Chest Opened! But you already have all cards unlocked.');
+      }
     }
   };
 
-  const restoreCard = () => {
-     const c = CBG_CARDS.find(card => card.secret.toLowerCase() === secretInput.toLowerCase().trim());
-     if (c) {
-        if (!unlockedIds.includes(c.id)) {
-           setUnlockedIds(prev => [...prev, c.id]);
-           alert(`Restored ${c.name}!`);
-        } else {
-           alert("You already unlocked this card!");
+  const handleSaveProgress = () => {
+    const data = JSON.stringify({
+        unlockedIds,
+        deckIds,
+        chests
+    });
+    const blob = new Blob([btoa(data)], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Card Battle Ground Account.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    setHasUnsavedProgress(false);
+    alert('Progress saved! You can delete any older progress files from your downloads to keep things organized.');
+  };
+
+  const handleLoadProgress = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const raw = event.target?.result as string;
+            const data = JSON.parse(atob(raw));
+            if (data.unlockedIds && data.deckIds && data.chests !== undefined) {
+                setUnlockedIds(data.unlockedIds);
+                setDeckIds(data.deckIds);
+                setChests(data.chests);
+                alert('Progress loaded successfully!');
+            } else {
+                alert('Invalid file format.');
+            }
+        } catch (err) {
+            alert('Failed to read file. Please ensure this is a valid Card Battle Ground Account file.');
         }
-     } else {
-        alert("Invalid secret.");
-     }
-     setSecretInput('');
+    };
+    reader.readAsText(file);
+    // Reset file input so we can load the same file again if needed
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const toggleDeckCard = (cId: string) => {
@@ -246,12 +319,14 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
            return;
         }
         setDeckIds(prev => prev.filter(id => id !== cId));
+        setHasUnsavedProgress(true);
      } else {
         if (deckIds.length >= 12) {
            alert("Deck is full (max 12). Remove a card first.");
            return;
         }
         setDeckIds(prev => [...prev, cId]);
+        setHasUnsavedProgress(true);
      }
   };
 
@@ -271,13 +346,22 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
                     <p className="text-slate-400">Fight your opponent in real-time!</p>
                  </div>
                  
-                 {isHost ? (
-                    <button onClick={startMatchHost} className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full font-black text-2xl shadow-[0_0_40px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all">
-                       START BATTLE
+                 <div className="flex flex-col items-center gap-4">
+                    <button 
+                       onClick={handleSaveProgress}
+                       className={`flex items-center gap-2 px-6 py-2 rounded-full font-bold text-sm transition-all border-2 ${hasUnsavedProgress ? 'bg-red-500/20 border-red-500 text-red-500 hover:bg-red-500/30' : 'bg-slate-800 border-slate-700 text-slate-500'}`}
+                    >
+                       <Save className="w-4 h-4" /> Save Progress
                     </button>
-                 ) : (
-                    <div className="text-lg font-bold text-slate-400 animate-pulse bg-slate-800 px-6 py-3 rounded-full border border-slate-700">Waiting for Host...</div>
-                 )}
+
+                    {isHost ? (
+                       <button onClick={startMatchHost} className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full font-black text-2xl shadow-[0_0_40px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all">
+                          START BATTLE
+                       </button>
+                    ) : (
+                       <div className="text-lg font-bold text-slate-400 animate-pulse bg-slate-800 px-6 py-3 rounded-full border border-slate-700">Waiting for Host...</div>
+                    )}
+                 </div>
 
                  <div className="w-full max-w-sm mt-8">
                     <h3 className="font-bold text-slate-300 mb-4 flex items-center gap-2 border-b border-slate-700 pb-2"><Package className="w-5 h-5"/> Chests</h3>
@@ -295,10 +379,22 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
            {tab === 'CARDS' && (
               <div className="flex flex-col gap-6">
                  <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700">
-                    <h3 className="font-bold mb-2 flex items-center gap-2"><Unlock className="w-4 h-4 text-amber-400"/> Restore Card</h3>
-                    <div className="flex gap-2">
-                       <input value={secretInput} onChange={e => setSecretInput(e.target.value)} placeholder="Enter card secret..." className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 outline-none focus:border-indigo-500 text-sm" />
-                       <button onClick={restoreCard} className="px-4 py-2 bg-indigo-600 rounded-xl text-sm font-bold">Restore</button>
+                    <h3 className="font-bold mb-2 flex items-center gap-2"><Upload className="w-4 h-4 text-emerald-400"/> Reload Progress</h3>
+                    <div className="flex gap-2 items-center">
+                       <input 
+                          type="file" 
+                          accept=".txt"
+                          onChange={handleLoadProgress}
+                          ref={fileInputRef}
+                          className="hidden" 
+                          id="progress-upload"
+                       />
+                       <label 
+                          htmlFor="progress-upload" 
+                          className="flex-1 text-center py-3 bg-emerald-600/20 border-2 border-emerald-500 text-emerald-400 rounded-xl text-sm font-bold cursor-pointer hover:bg-emerald-600/30 transition-colors"
+                       >
+                          Choose Progress File
+                       </label>
                     </div>
                  </div>
 
