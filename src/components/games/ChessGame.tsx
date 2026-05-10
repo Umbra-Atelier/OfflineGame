@@ -14,11 +14,17 @@ export function ChessGame({ channel, isHost, onBackToLobby }: ChessGameProps) {
   const [fen, setFen] = useState(game.fen());
   const [gameOverStr, setGameOverStr] = useState<string | null>(null);
 
+  const isNetworked = !!channel;
   const myColor = isHost ? 'white' : 'black';
-  const isMyTurn = game.turn() === myColor[0];
+  
+  // In hotseat, orientation follows the current turn. In network, it follows myColor.
+  const boardOrientation = isNetworked ? myColor : (game.turn() === 'w' ? 'white' : 'black');
+  
+  // In hotseat, it is always 'your' turn since players share the device.
+  const isMyTurn = isNetworked ? game.turn() === myColor[0] : true;
 
   const sendMessage = useCallback((payload: any) => {
-    if (channel.readyState === 'open') {
+    if (isNetworked && channel.readyState === 'open') {
       const msg: GameMessage = {
         type: 'GAME_MESSAGE',
         game: 'CHESS',
@@ -26,10 +32,12 @@ export function ChessGame({ channel, isHost, onBackToLobby }: ChessGameProps) {
       };
       channel.send(JSON.stringify(msg));
     }
-  }, [channel]);
+  }, [channel, isNetworked]);
 
   // Handle incoming moves and restarts
   useEffect(() => {
+    if (!isNetworked) return;
+    
     const handleMessage = (event: MessageEvent) => {
       const message = JSON.parse(event.data);
       if (message.type === 'GAME_MESSAGE' && message.game === 'CHESS') {
@@ -52,7 +60,7 @@ export function ChessGame({ channel, isHost, onBackToLobby }: ChessGameProps) {
 
     channel.addEventListener('message', handleMessage);
     return () => channel.removeEventListener('message', handleMessage);
-  }, [channel, fen]);
+  }, [channel, fen, isNetworked]);
 
   const checkGameOver = (current_game: Chess) => {
     if (current_game.isCheckmate()) setGameOverStr("Checkmate!");
@@ -78,7 +86,7 @@ export function ChessGame({ channel, isHost, onBackToLobby }: ChessGameProps) {
       setFen(gameCopy.fen());
       checkGameOver(gameCopy);
 
-      // Send to peer
+      // Send to peer if networked
       sendMessage({ type: 'MOVE', move });
       return true;
     } catch (e) {
@@ -115,9 +123,10 @@ export function ChessGame({ channel, isHost, onBackToLobby }: ChessGameProps) {
           {...({
             position: fen,
             onPieceDrop: onDrop,
-            boardOrientation: myColor,
+            boardOrientation: boardOrientation,
             customDarkSquareStyle: { backgroundColor: '#779556' },
-            customLightSquareStyle: { backgroundColor: '#ebecd0' }
+            customLightSquareStyle: { backgroundColor: '#ebecd0' },
+            animationDuration: isNetworked ? 300 : 0 // remove animation for hotseat so rotation is clean
           } as any)}
         />
       </div>

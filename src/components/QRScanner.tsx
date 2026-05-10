@@ -20,7 +20,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
                   onScan(result[0].rawValue);
                }
             }}
-            onError={(e) => onError && onError(e.message)}
+            onError={(e) => onError && onError(e instanceof Error ? e.message : String(e))}
             formats={['qr_code']}
          />
       </div>
