@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import jsQR from 'jsqr';
-import { Camera, Image as ImageIcon, VideoOff, RefreshCw } from 'lucide-react';
+import { Html5Qrcode, CameraDevice } from 'html5-qrcode';
+import { Camera, Video, VideoOff, RefreshCw } from 'lucide-react';
 
 interface QRScannerProps {
   onScan: (decodedText: string) => void;
@@ -10,172 +10,191 @@ interface QRScannerProps {
 export function QRScanner({ onScan, onError }: QRScannerProps) {
   const [manualInput, setManualInput] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [hasCameraPerms, setHasCameraPerms] = useState<boolean | null>(null);
   
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameras, setCameras] = useState<CameraDevice[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [hasRequestedPerms, setHasRequestedPerms] = useState(false);
+  
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const rafRef = useRef<number>(0);
 
-  const startVideoContext = async () => {
+  useEffect(() => {
+    scannerRef.current = new Html5Qrcode("qr-reader-custom");
+    
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+         scannerRef.current.stop().then(() => {
+           scannerRef.current?.clear();
+         }).catch(console.error);
+      }
+    };
+  }, []);
+
+  const requestCameras = async () => {
+    setHasRequestedPerms(true);
     setErrorMsg(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
-        await videoRef.current.play();
-        setHasCameraPerms(true);
-        setIsScanning(true);
-        scanFrame();
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length > 0) {
+        setCameras(devices);
+        
+        // Find best match for "back" camera
+        const backCamera = devices.find(d => 
+          d.label.toLowerCase().includes('back') || 
+          d.label.toLowerCase().includes('environment') ||
+          d.label.toLowerCase().includes('rear')
+        );
+        const defaultCam = backCamera ? backCamera.id : devices[0].id;
+        setSelectedCameraId(defaultCam);
+        
+        startScanning(defaultCam);
+      } else {
+        setErrorMsg("No cameras found on your device.");
       }
     } catch (err: any) {
-      console.error("Camera access failed", err);
-      // Most likely iframe perms or user denial
-      setHasCameraPerms(false);
-      setErrorMsg("Camera permission denied or unavailable. Please use the 'Take Photo' button below, or paste the code directly.");
+      console.error(err);
+      setErrorMsg("Camera permission denied. Please allow permissions, take a photo, or paste the code directly.");
       if (onError) onError("Camera permission denied.");
     }
   };
 
-  const stopVideoContext = () => {
-    setIsScanning(false);
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-    }
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  useEffect(() => {
-    // Try to auto-start. If it fails, users can use fallback.
-    startVideoContext();
-    return stopVideoContext;
-  }, []);
-
-  const scanFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
+  const startScanning = async (cameraId: string) => {
+    if (!scannerRef.current) return;
     
-    // Check if video is ready
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Match canvas to video dimensions
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
-        
-        if (code && code.data) {
-          stopVideoContext();
-          onScan(code.data);
-          return;
-        }
+    try {
+      if (scannerRef.current.isScanning) {
+        await scannerRef.current.stop();
       }
-    }
-    
-    if (isScanning) {
-      rafRef.current = requestAnimationFrame(scanFrame);
+      
+      setErrorMsg(null);
+      await scannerRef.current.start(
+        cameraId,
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        (decodedText) => {
+          if (scannerRef.current?.isScanning) {
+            scannerRef.current.stop().catch(console.error);
+          }
+          setIsScanning(false);
+          onScan(decodedText);
+        },
+        (errorMessage) => {
+          // ignore read errors (happens constantly until QR is found)
+        }
+      );
+      setIsScanning(true);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to start camera: ${err.message || err}`);
+      setIsScanning(false);
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCameraChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value;
+    setSelectedCameraId(newId);
+    if (isScanning) {
+      startScanning(newId);
+    }
+  };
+
+  const stopScanning = async () => {
+    if (!scannerRef.current || !scannerRef.current.isScanning) return;
+    try {
+      await scannerRef.current.stop();
+      setIsScanning(false);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !scannerRef.current) return;
 
     setErrorMsg(null);
-    const img = new Image();
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const maxDim = 800; // Resize if too large to prevent jsqr from hanging
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-             width = Math.round((width * maxDim) / height);
-             height = maxDim;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const imageData = ctx.getImageData(0, 0, width, height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          
-          if (code && code.data) {
-            onScan(code.data);
-          } else {
-            setErrorMsg("No QR code found in the image. Please try again or paste the code directly.");
-            if (onError) onError("Failed to detect QR in image.");
-          }
-        }
-      };
-      if (event.target?.result) {
-        img.src = event.target.result as string;
+    try {
+      if (scannerRef.current.isScanning) {
+        await scannerRef.current.stop();
+        setIsScanning(false);
       }
-    };
-    reader.readAsDataURL(file);
+      
+      const decodedText = await scannerRef.current.scanFile(file, true);
+      onScan(decodedText);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("No QR code found in the image. Please try again or paste the code directly.");
+      if (onError) onError("Failed to detect QR in image.");
+    }
+    
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
     <div className="flex flex-col items-center gap-4 w-full max-w-sm mx-auto">
-      <div className="w-full relative min-h-[250px] bg-slate-900 overflow-hidden rounded-xl shadow-lg border border-slate-700 flex flex-col items-center justify-center">
-        {hasCameraPerms === true ? (
-           <>
-              <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" />
-              <canvas ref={canvasRef} className="hidden" />
-              <div className="absolute inset-0 border-4 border-indigo-500/50 m-8 rounded-xl z-10 pointer-events-none" />
-           </>
-        ) : (
-           <div className="p-6 text-center text-slate-400 flex flex-col items-center gap-3">
-              <VideoOff className="w-12 h-12 text-slate-600" />
-              <p className="text-sm">{errorMsg || "Connecting to camera..."}</p>
-           </div>
+      
+      {/* Scanner Window */}
+      <div className="w-full bg-white overflow-hidden rounded-xl shadow-lg border border-neutral-200 flex flex-col items-center">
+        
+        <div id="qr-reader-custom" className="w-full min-h-[300px] flex items-center justify-center bg-black relative">
+           {/* If not scanning and haven't requested perms, show start button overlay */}
+           {!isScanning && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-900">
+                {!hasRequestedPerms ? (
+                  <button 
+                    onClick={requestCameras}
+                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-full font-bold shadow-lg hover:bg-indigo-700 transition"
+                  >
+                    <Video className="w-5 h-5"/> Start Camera
+                  </button>
+                ) : (
+                  <div className="p-6 text-center text-slate-400 flex flex-col items-center gap-3">
+                    <VideoOff className="w-12 h-12 text-slate-600" />
+                    <p className="text-sm">{errorMsg || "Camera stopped"}</p>
+                    {cameras.length > 0 && !errorMsg && (
+                      <button onClick={() => startScanning(selectedCameraId)} className="mt-2 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm">
+                        Resume
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+           )}
+        </div>
+
+        {/* Camera Selector */}
+        {cameras.length > 0 && (
+          <div className="w-full p-3 bg-slate-100 border-t border-slate-200 flex flex-col gap-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Camera</label>
+            <select 
+              value={selectedCameraId}
+              onChange={handleCameraChange}
+              className="w-full p-2 bg-white border border-slate-300 rounded text-sm text-slate-700 outline-none"
+            >
+              {cameras.map(cam => (
+                <option key={cam.id} value={cam.id}>{cam.label || `Camera ${cam.id.substring(0, 5)}`}</option>
+              ))}
+            </select>
+          </div>
         )}
       </div>
 
       <div className="flex gap-2 w-full">
          <button 
-           onClick={() => startVideoContext()} 
-           className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 font-bold hover:bg-slate-700 transition"
+           onClick={() => {
+              if (isScanning) stopScanning();
+              fileInputRef.current?.click();
+           }} 
+           className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition shadow-sm"
          >
-            <RefreshCw className="w-4 h-4"/> Retry Camera
-         </button>
-         <button 
-           onClick={() => fileInputRef.current?.click()} 
-           className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition"
-         >
-            <Camera className="w-4 h-4"/> Take Photo
+            <Camera className="w-5 h-5"/> Scan Photo
          </button>
          <input 
            type="file" 
            accept="image/*" 
-           capture="environment" 
            ref={fileInputRef} 
            onChange={handleFileUpload} 
            className="hidden" 
