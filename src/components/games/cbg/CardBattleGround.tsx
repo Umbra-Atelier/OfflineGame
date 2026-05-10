@@ -270,24 +270,84 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
     }
   };
 
-  const handleSaveProgress = () => {
+  const [fileHandle, setFileHandle] = useState<any>(null);
+
+  const handleSaveProgress = async () => {
     const data = JSON.stringify({
         unlockedIds,
         deckIds,
         chests
     });
-    const blob = new Blob([btoa(data)], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Card Battle Ground Account.txt';
-    a.click();
-    URL.revokeObjectURL(url);
-    setHasUnsavedProgress(false);
-    alert('Progress saved! You can delete any older progress files from your downloads to keep things organized.');
+    
+    try {
+        if ('showSaveFilePicker' in window) {
+            let handle = fileHandle;
+            if (!handle) {
+                handle = await (window as any).showSaveFilePicker({
+                    suggestedName: 'Card Battle Ground Account.txt',
+                    types: [{
+                        description: 'Text Files',
+                        accept: { 'text/plain': ['.txt'] },
+                    }],
+                });
+                setFileHandle(handle);
+            }
+            const writable = await handle.createWritable();
+            await writable.write(btoa(data));
+            await writable.close();
+            setHasUnsavedProgress(false);
+            alert('Progress saved to your file! (Old versions are automatically overwritten).');
+        } else {
+            // Fallback for Safari/Mobile
+            const blob = new Blob([btoa(data)], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Card Battle Ground Account.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+            setHasUnsavedProgress(false);
+            alert('Progress downloaded! (Note: Your browser does not support automatic overwriting of old files).');
+        }
+    } catch (err: any) {
+        if (err.name !== 'AbortError') {
+           alert('Failed to save progress.');
+        }
+    }
   };
 
-  const handleLoadProgress = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLoadProgressFileAPI = async () => {
+    try {
+      if ('showOpenFilePicker' in window) {
+        const [handle] = await (window as any).showOpenFilePicker({
+          types: [{
+            description: 'Text Files',
+            accept: { 'text/plain': ['.txt'] },
+          }],
+        });
+        setFileHandle(handle);
+        const file = await handle.getFile();
+        const raw = await file.text();
+        const data = JSON.parse(atob(raw));
+        if (data.unlockedIds && data.deckIds && data.chests !== undefined) {
+            setUnlockedIds(data.unlockedIds);
+            setDeckIds(data.deckIds);
+            setChests(data.chests);
+            alert('Progress loaded successfully!');
+        } else {
+            alert('Invalid file format.');
+        }
+      } else {
+        fileInputRef.current?.click();
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        alert('Failed to load file.');
+      }
+    }
+  };
+
+  const handleLoadProgressFallback = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -308,7 +368,6 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
         }
     };
     reader.readAsText(file);
-    // Reset file input so we can load the same file again if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -380,21 +439,20 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
               <div className="flex flex-col gap-6">
                  <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700">
                     <h3 className="font-bold mb-2 flex items-center gap-2"><Upload className="w-4 h-4 text-emerald-400"/> Reload Progress</h3>
-                    <div className="flex gap-2 items-center">
+                     <div className="flex gap-2 items-center">
                        <input 
                           type="file" 
                           accept=".txt"
-                          onChange={handleLoadProgress}
+                          onChange={handleLoadProgressFallback}
                           ref={fileInputRef}
                           className="hidden" 
-                          id="progress-upload"
                        />
-                       <label 
-                          htmlFor="progress-upload" 
+                       <button 
+                          onClick={handleLoadProgressFileAPI}
                           className="flex-1 text-center py-3 bg-emerald-600/20 border-2 border-emerald-500 text-emerald-400 rounded-xl text-sm font-bold cursor-pointer hover:bg-emerald-600/30 transition-colors"
                        >
                           Choose Progress File
-                       </label>
+                       </button>
                     </div>
                  </div>
 
