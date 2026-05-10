@@ -15,7 +15,6 @@ import { ChessGame } from './components/games/ChessGame';
 import { HiddenRole } from './components/games/HiddenRole';
 import { Tournament } from './components/Tournament';
 import { CardBattleGround } from './components/games/cbg/CardBattleGround';
-import { LANConnectionManager } from './components/LANConnectionManager';
 
 type AppState =
   | 'IDLE'
@@ -27,8 +26,6 @@ type AppState =
   | 'JOIN_CHOOSE_NAME'
   | 'JOIN_SCAN_OFFER'
   | 'JOIN_ANSWER'
-  | 'JOIN_LAN_MODE'
-  | 'HOST_LAN_MODE'
   | 'LOBBY'
   | 'PLAYING';
 
@@ -239,29 +236,6 @@ export default function App() {
     setActiveGuestId(null);
   };
 
-  // LAN Connection Callbacks
-  const handleLANHostConnection = (peer: RTCPeerConnection, channel: RTCDataChannel) => {
-     // For host
-     const guestId = `guest-${Date.now()}`;
-     peersRef.current.set(guestId, peer);
-     channelsRef.current.set(guestId, channel);
-     setActiveGuestId(guestId);
-     
-     // Note: in LAN connections, the joiner name will come when they connect, or we can just mock it for now
-     setConnectedGuests(prev => [...prev, { id: guestId, name: `Guest ${connectedGuests.length + 1}` }]);
-     setAppState('HOSTING_GUEST_CONNECTED');
-  };
-
-  const handleLANJoinConnection = (peer: RTCPeerConnection, channel: RTCDataChannel, rHostName?: string) => {
-     // For joiner
-     const myId = 'host';
-     peersRef.current.set(myId, peer);
-     channelsRef.current.set(myId, channel);
-     if (rHostName) setHostName(rHostName);
-     setLocalData(''); // clear localData to avoid showing QR code in JOIN_ANSWER
-     setAppState('JOIN_ANSWER'); // Wait for LOBBY sync
-  };
-
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans flex flex-col items-center overflow-x-hidden selection:bg-indigo-100">
       <header className="w-full max-w-lg mx-auto p-5 flex justify-between items-center bg-white/80 backdrop-blur-md shadow-[0_1px_3px_rgb(0_0_0_/_0.05)] sticky top-0 z-50">
@@ -373,14 +347,6 @@ export default function App() {
             
             <div className="space-y-3 mt-4">
                <button
-                 onClick={() => setAppState('HOST_LAN_MODE')}
-                 disabled={!playerName.trim()}
-                 className="w-full py-4 bg-emerald-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-emerald-600/20 font-bold text-lg hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
-               >
-                 <Globe className="w-5 h-5"/>
-                 Host Online (Local Network)
-               </button>
-               <button
                  onClick={createHostOffer}
                  disabled={!playerName.trim()}
                  className="w-full py-4 bg-indigo-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-indigo-600/20 font-bold text-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50"
@@ -409,14 +375,6 @@ export default function App() {
             
             <div className="space-y-3 mt-4">
                <button
-                 onClick={() => setAppState('JOIN_LAN_MODE')}
-                 disabled={!playerName.trim()}
-                 className="w-full py-4 bg-emerald-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-emerald-600/20 font-bold text-lg hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
-               >
-                 <Globe className="w-5 h-5"/>
-                 Find Host on Network
-               </button>
-               <button
                  onClick={() => setAppState('JOIN_SCAN_OFFER')}
                  disabled={!playerName.trim()}
                  className="w-full py-4 bg-indigo-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-indigo-600/20 font-bold text-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50"
@@ -426,24 +384,6 @@ export default function App() {
                </button>
             </div>
           </div>
-        )}
-
-        {appState === 'HOST_LAN_MODE' && (
-          <LANConnectionManager 
-             playerName={playerName} 
-             isHostFlow={true} 
-             onConnectionEstablished={handleLANHostConnection} 
-             onCancel={() => setAppState('HOST_CHOOSE_NAME')}
-          />
-        )}
-        
-        {appState === 'JOIN_LAN_MODE' && (
-          <LANConnectionManager 
-             playerName={playerName} 
-             isHostFlow={false} 
-             onConnectionEstablished={handleLANJoinConnection} 
-             onCancel={() => setAppState('JOIN_CHOOSE_NAME')}
-          />
         )}
 
         {appState === 'HOSTING_OFFER' && (
