@@ -131,7 +131,7 @@ export class CBGEngine {
              const distRightBridge = Math.abs(e.x - 300);
              const bridgeX = distLeftBridge < distRightBridge ? 100 : 300;
              tx = bridgeX;
-             ty = isTopSide ? 280 : 320; // point just before bridge
+             ty = isTopSide ? 320 : 280; // move past the midline
           }
 
           const angle = Math.atan2(ty - e.y, tx - e.x);
@@ -139,8 +139,24 @@ export class CBGEngine {
           e.y += Math.sin(angle) * e.speed * dt;
         }
       } else if (e.type === 'troop') {
-         // Move to other side passively
-         e.y += (e.team === 0 ? -1 : 1) * e.speed * dt;
+         // Move to other side passively, considering bridges
+         let tx = e.x;
+         let ty = e.team === 0 ? 0 : 600;
+
+         const isTopSide = e.y < 300;
+         const targetIsTopSide = ty < 300;
+
+         if (isTopSide !== targetIsTopSide) {
+            const distLeftBridge = Math.abs(e.x - 100);
+            const distRightBridge = Math.abs(e.x - 300);
+            const bridgeX = distLeftBridge < distRightBridge ? 100 : 300;
+            tx = bridgeX;
+            ty = isTopSide ? 320 : 280;
+         }
+
+         const angle = Math.atan2(ty - e.y, tx - e.x);
+         e.x += Math.cos(angle) * e.speed * dt;
+         e.y += Math.sin(angle) * e.speed * dt;
       }
     }
 

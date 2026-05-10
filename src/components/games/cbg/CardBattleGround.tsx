@@ -1,10 +1,44 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { CardDef, CBG_CARDS } from './cards';
 import { CBGEngine, GameState, Entity } from './Engine';
-import { Play, Package, Book, Unlock, ArrowLeft, Download, Upload, Save } from 'lucide-react';
+import { Play, Package, Book, Unlock, ArrowLeft, Download, Upload, Save, Info, X } from 'lucide-react';
 
 const MAP_W = 400;
 const MAP_H = 600;
+
+const UnitPreview = ({ card }: { card: CardDef }) => {
+   if (card.type === 'spell') {
+      return (
+         <svg viewBox="-20 -20 40 40" className="w-10 h-10 drop-shadow-md">
+            <circle cx="0" cy="0" r="16" fill={card.color} fillOpacity="0.4" stroke="#e2e8f0" strokeWidth="2" strokeDasharray="4 4" />
+         </svg>
+      );
+   }
+   if (card.stats.speed === 0) {
+      return (
+         <svg viewBox="-20 -20 40 40" className="w-10 h-10 drop-shadow-md">
+            <rect x="-15" y="-15" width="30" height="30" fill={card.color} rx="4" />
+            <circle cx="0" cy="0" r="10" fill="rgba(0,0,0,0.3)" />
+         </svg>
+      );
+   }
+   const isMelee = (card.stats.range || 0) < 30;
+   return (
+      <svg viewBox="-25 -25 50 50" className="w-10 h-10 drop-shadow-md">
+         <circle cx="0" cy="0" r="15" fill={card.color} />
+         {isMelee ? (
+            <g>
+               <rect x="7" y="-15" width="4" height="22" fill="#cbd5e1" />
+               <rect x="5" y="-21" width="8" height="8" fill="#94a3b8" />
+            </g>
+         ) : (
+            <path d="M 17 -10 A 12 12 0 0 1 17 10" stroke="#854d0e" strokeWidth="3" fill="none" />
+         )}
+         <circle cx="5" cy="-6" r="3" fill="white" />
+         <circle cx="5" cy="6" r="3" fill="white" />
+      </svg>
+   );
+};
 
 interface CBGProps {
   channel: RTCDataChannel;
@@ -23,6 +57,7 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
   // UI State
   const [tab, setTab] = useState<'BATTLE' | 'CARDS'>('BATTLE');
   const [matchState, setMatchState] = useState<'MENU' | 'PLAYING' | 'ENDED'>('MENU');
+  const [infoModalCardId, setInfoModalCardId] = useState<string | null>(null);
   
   // In-game state
   const engineRef = useRef<CBGEngine | null>(null);
@@ -73,7 +108,7 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
     };
     channel.addEventListener('message', handleMessage);
     return () => channel.removeEventListener('message', handleMessage);
-  }, [isHost, channel]);
+  }, [isHost, channel, deckIds]);
 
   const broadcast = (msg: any) => {
     if (channel.readyState === 'open') {
@@ -391,7 +426,44 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
 
   if (matchState === 'MENU') {
     return (
-      <div className="w-full h-full flex flex-col bg-slate-900 text-slate-100">
+      <div className="w-full h-full flex flex-col bg-slate-900 text-slate-100 relative">
+        {infoModalCardId && (() => {
+           const infoC = CBG_CARDS.find(card => card.id === infoModalCardId)!;
+           const inDeck = deckIds.includes(infoModalCardId);
+           return (
+              <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setInfoModalCardId(null)}>
+                 <div className="bg-slate-800 border-2 border-slate-700 rounded-3xl w-full max-w-sm p-6 flex flex-col gap-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-between items-start">
+                       <div>
+                          <h2 className="text-2xl font-black">{infoC.name}</h2>
+                          <p className="text-slate-400 capitalize">{infoC.type}</p>
+                       </div>
+                       <button onClick={() => setInfoModalCardId(null)} className="p-2 bg-slate-700 rounded-full text-slate-300 hover:text-white"><X className="w-5 h-5"/></button>
+                    </div>
+
+                    <div className="w-full aspect-video bg-slate-700 rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden">
+                       <UnitPreview card={infoC} />
+                       <div className="absolute bottom-2 left-2 bg-fuchsia-500 text-white rounded-full px-3 py-1 text-sm font-black shadow-md flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-white animate-pulse" /> {infoC.cost} Elixir</div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                       {infoC.stats.hp && <div className="bg-slate-900/50 p-3 rounded-xl"><span className="text-slate-400 block pb-1 text-xs uppercase font-bold">HP</span><span className="font-bold">{infoC.stats.hp}</span></div>}
+                       {infoC.stats.damage && <div className="bg-slate-900/50 p-3 rounded-xl"><span className="text-slate-400 block pb-1 text-xs uppercase font-bold">Damage</span><span className="font-bold">{infoC.stats.damage}</span></div>}
+                       {infoC.stats.speed !== undefined && <div className="bg-slate-900/50 p-3 rounded-xl"><span className="text-slate-400 block pb-1 text-xs uppercase font-bold">Speed</span><span className="font-bold">{infoC.stats.speed === 0 ? 'Building' : infoC.stats.speed}</span></div>}
+                       {infoC.stats.range !== undefined && <div className="bg-slate-900/50 p-3 rounded-xl"><span className="text-slate-400 block pb-1 text-xs uppercase font-bold">Range</span><span className="font-bold">{infoC.stats.range}</span></div>}
+                    </div>
+
+                    <button 
+                       onClick={() => toggleDeckCard(infoC.id)}
+                       className={`w-full py-4 rounded-full font-black text-lg transition-transform active:scale-95 ${inDeck ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 border-2 border-red-500/50' : 'bg-indigo-500 text-white hover:bg-indigo-400'}`}
+                    >
+                       {inDeck ? 'Remove from Deck' : 'Add to Deck'}
+                    </button>
+                 </div>
+              </div>
+           );
+        })()}
+
         <header className="px-4 py-3 bg-slate-800 flex justify-between items-center shadow-md">
           <h1 className="font-bold text-xl flex items-center gap-2"><div className="w-4 h-4 bg-indigo-500 rounded-sm" /> Card Battle</h1>
           <button onClick={onBackToLobby} className="text-slate-400 hover:text-white"><ArrowLeft className="w-5 h-5"/></button>
@@ -462,11 +534,15 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
                        {deckIds.map(id => {
                           const c = CBG_CARDS.find(card => card.id === id)!;
                           return (
-                             <div key={id} onClick={() => toggleDeckCard(id)} className="aspect-[3/4] rounded-xl border-2 border-indigo-500 relative flex flex-col cursor-pointer overflow-hidden bg-slate-800 group">
-                                <div className="h-1/2 w-full" style={{backgroundColor: c.color}} />
-                                <div className="p-1 text-center text-[10px] font-bold leading-tight mt-1">{c.name}</div>
-                                <div className="absolute top-1 left-1 bg-fuchsia-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-black">{c.cost}</div>
-                                <div className="absolute inset-0 bg-red-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 font-bold text-xs">Remove</div>
+                             <div key={id} onClick={() => setInfoModalCardId(id)} className="aspect-[3/4] rounded-xl border-2 border-indigo-500 relative flex flex-col cursor-pointer overflow-hidden bg-slate-800 hover:border-indigo-400 transition-colors group">
+                                <div className="h-[55%] w-full bg-slate-700 flex items-center justify-center relative shadow-inner">
+                                   <UnitPreview card={c} />
+                                </div>
+                                <div className="flex-1 flex items-center justify-center p-1 bg-slate-800">
+                                   <span className="text-[10px] font-bold text-center leading-tight drop-shadow text-white">{c.name}</span>
+                                </div>
+                                <div className="absolute top-1 left-1 bg-fuchsia-500 text-white rounded-full w-5 h-5 shadow-md flex items-center justify-center text-xs font-black">{c.cost}</div>
+                                <div className="absolute top-1 right-1 bg-slate-900/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Info className="w-3 h-3"/></div>
                              </div>
                           );
                        })}
@@ -479,10 +555,15 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
                        {unlockedIds.filter(id => !deckIds.includes(id)).map(id => {
                           const c = CBG_CARDS.find(card => card.id === id)!;
                           return (
-                             <div key={id} onClick={() => toggleDeckCard(id)} className="aspect-[3/4] rounded-xl border-2 border-slate-600 relative flex flex-col cursor-pointer overflow-hidden bg-slate-800 hover:border-slate-400 transition-colors">
-                                <div className="h-1/2 w-full" style={{backgroundColor: c.color}} />
-                                <div className="p-1 text-center text-[10px] font-bold leading-tight mt-1">{c.name}</div>
-                                <div className="absolute top-1 left-1 bg-fuchsia-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-black">{c.cost}</div>
+                             <div key={id} onClick={() => setInfoModalCardId(id)} className="aspect-[3/4] rounded-xl border-2 border-slate-600 relative flex flex-col cursor-pointer overflow-hidden bg-slate-800 hover:border-slate-400 transition-colors group">
+                                <div className="h-[55%] w-full bg-slate-700 flex items-center justify-center relative shadow-inner">
+                                   <UnitPreview card={c} />
+                                </div>
+                                <div className="flex-1 flex items-center justify-center p-1 bg-slate-800">
+                                   <span className="text-[10px] font-bold text-center leading-tight drop-shadow text-white">{c.name}</span>
+                                </div>
+                                <div className="absolute top-1 left-1 bg-fuchsia-500 text-white rounded-full w-5 h-5 shadow-md flex items-center justify-center text-xs font-black">{c.cost}</div>
+                                <div className="absolute top-1 right-1 bg-slate-900/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Info className="w-3 h-3"/></div>
                              </div>
                           );
                        })}
@@ -549,13 +630,15 @@ export function CardBattleGround({ channel, isHost, onBackToLobby }: CBGProps) {
                       key={i}
                       disabled={!canAfford}
                       onClick={() => setSelectedCardId(isSelected ? null : id)}
-                      className={`relative w-16 h-24 rounded-lg flex flex-col overflow-hidden transition-transform ${isSelected ? '-translate-y-4 shadow-lg shadow-indigo-500/50' : ''} ${!canAfford ? 'opacity-40 grayscale' : 'hover:-translate-y-1'}`}
+                      className={`relative w-16 h-24 rounded-lg flex flex-col overflow-hidden transition-transform ${isSelected ? '-translate-y-4 shadow-lg shadow-indigo-500/50 ring-2 ring-indigo-400' : ''} ${!canAfford ? 'opacity-40 grayscale' : 'hover:-translate-y-1'}`}
                    >
-                      <div className="h-1/2 w-full" style={{backgroundColor: c.color}} />
-                      <div className="h-1/2 bg-slate-800 p-1 flex flex-col items-center">
-                         <span className="text-[9px] font-bold text-center leading-tight">{c.name}</span>
+                      <div className="h-[55%] w-full bg-slate-700 flex items-center justify-center relative shadow-inner">
+                         <UnitPreview card={c} />
                       </div>
-                      <div className="absolute top-1 left-1 bg-fuchsia-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-black">{c.cost}</div>
+                      <div className="flex-1 w-full bg-slate-800 p-1 flex items-center justify-center">
+                         <span className="text-[9px] font-bold text-center leading-tight drop-shadow text-white">{c.name}</span>
+                      </div>
+                      <div className="absolute top-1 left-1 bg-fuchsia-500 text-white rounded-full w-5 h-5 shadow-md flex items-center justify-center text-[10px] font-black">{c.cost}</div>
                    </button>
                 );
              })}
