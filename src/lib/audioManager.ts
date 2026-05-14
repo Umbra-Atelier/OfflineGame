@@ -9,10 +9,12 @@ let clickSynth: Tone.MembraneSynth | null = null;
 export const setupAudio = async () => {
   try {
     if (Tone.context.state !== 'running') {
+      // Browsers will often block this if there was no prior interaction, 
+      // generating a warning. We expect this.
       await Tone.start();
     }
   } catch (e) {
-    console.warn("Audio blocked by browser, requires user interaction", e);
+    // Suppress
   }
 };
 

@@ -153,6 +153,13 @@ export default function App() {
       const peer = new RTCPeerConnection(rtcConfig);
       peersRef.current.set(guestId, peer);
 
+      peer.oniceconnectionstatechange = () => {
+         if (peer.iceConnectionState === 'failed' || peer.iceConnectionState === 'disconnected') {
+             setErrorTimer("Connection lost. Please try again.");
+             setAppState('HOSTING_SCAN_ANSWER');
+         }
+      };
+
       const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
       channelsRef.current.set(guestId, channel);
 
@@ -223,6 +230,13 @@ export default function App() {
 
       const peer = new RTCPeerConnection(rtcConfig);
       peersRef.current.set(myId, peer);
+
+      peer.oniceconnectionstatechange = () => {
+         if (peer.iceConnectionState === 'failed' || peer.iceConnectionState === 'disconnected') {
+             setErrorTimer("Connection lost. Please try scanning again.");
+             setAppState('JOIN_SCAN_OFFER');
+         }
+      };
 
       const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
       channelsRef.current.set(myId, channel);
