@@ -1,4 +1,4 @@
-export type GameType = 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'CARD_BATTLE';
+export type GameType = 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'CARD_BATTLE' | 'ROCKET_LEAGUE';
 
 export interface BaseMessage {
   type: 'LOBBY_STATE' | 'START_GAME' | 'GAME_MESSAGE' | 'BACK_TO_LOBBY' | 'SET_ID' | 'GO_TO_LOBBY';
@@ -63,6 +63,17 @@ export const GAMES: Record<GameType, { id: GameType; name: string; description: 
       'Tap a card to select it, then tap anywhere on your side of the map to deploy it.',
       'Deploy units costing Elixir (which regenerates over time).',
       'Destroy the enemy King Tower to win! Win matches to get Card Secrets to unlock more cards.'
+    ]
+  },
+  ROCKET_LEAGUE: {
+    id: 'ROCKET_LEAGUE',
+    name: 'Rocket League 2D',
+    description: 'Sideswipe-style car soccer! First to 2 goals wins.',
+    tutorial: [
+      'Use the joystick on the left to move and rotate.',
+      'Use the Jump and Boost buttons on the right to fly.',
+      'Hit the ball into the opponent\'s goal to score!',
+      'Best of 3 rounds (first to 2 goals).'
     ]
   }
 };
