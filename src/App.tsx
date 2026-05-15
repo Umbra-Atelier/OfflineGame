@@ -90,6 +90,7 @@ export default function App() {
     }
   }, [audioEnabled, appState, selectedGame, hasInteracted]);
 
+  const [channelsUpdated, setChannelsUpdated] = useState(0);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelsRef = useRef<Map<string, RTCDataChannel>>(new Map());
 
@@ -140,7 +141,7 @@ export default function App() {
         });
       };
     }
-  }, [appState, isHostRole]);
+  }, [appState, isHostRole, channelsUpdated]);
 
   // Host sync lobby selection
   useEffect(() => {
@@ -176,6 +177,7 @@ export default function App() {
 
       const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
       channelsRef.current.set(guestId, channel);
+      setChannelsUpdated(c => c + 1);
 
       channel.onopen = () => {
         setAppState('HOSTING_GUEST_CONNECTED');
@@ -277,6 +279,7 @@ export default function App() {
 
              const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
              channelsRef.current.set(guestId, channel);
+             setChannelsUpdated(c => c + 1);
 
              channel.onopen = () => {
                setConnectedGuests(prev => [...prev, { id: guestId, name: data.hostName }]);
@@ -350,6 +353,7 @@ export default function App() {
 
              const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
              channelsRef.current.set(peerMyId, channel);
+             setChannelsUpdated(c => c + 1);
              
              const desc = decodeDescription(data.sdp);
              await peer.setRemoteDescription(desc);
@@ -391,6 +395,7 @@ export default function App() {
 
       const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
       channelsRef.current.set(myId, channel);
+      setChannelsUpdated(c => c + 1);
       
       channel.onopen = () => {
         // Wait for host to send GO_TO_LOBBY or just wait

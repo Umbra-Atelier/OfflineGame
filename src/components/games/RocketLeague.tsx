@@ -129,10 +129,10 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
     const rampW = 200;
     const rampH = 50;
     // Ramps
-    const tlRamp = Bodies.rectangle(60, 60, rampW, rampH, { isStatic: true, angle: -Math.PI / 4 });
-    const blRamp = Bodies.rectangle(60, WORLD_HEIGHT - 60, rampW, rampH, { isStatic: true, angle: Math.PI / 4 });
-    const trRamp = Bodies.rectangle(WORLD_WIDTH - 60, 60, rampW, rampH, { isStatic: true, angle: Math.PI / 4 });
-    const brRamp = Bodies.rectangle(WORLD_WIDTH - 60, WORLD_HEIGHT - 60, rampW, rampH, { isStatic: true, angle: -Math.PI / 4 });
+    const tlRamp = Bodies.rectangle(60, 60, rampW, rampH, { isStatic: true, angle: Math.PI / 4 });
+    const blRamp = Bodies.rectangle(60, WORLD_HEIGHT - 60, rampW, rampH, { isStatic: true, angle: -Math.PI / 4 });
+    const trRamp = Bodies.rectangle(WORLD_WIDTH - 60, 60, rampW, rampH, { isStatic: true, angle: -Math.PI / 4 });
+    const brRamp = Bodies.rectangle(WORLD_WIDTH - 60, WORLD_HEIGHT - 60, rampW, rampH, { isStatic: true, angle: Math.PI / 4 });
 
     const wallOpts = [
         ceiling, floor, 
@@ -493,10 +493,10 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
         <div className="absolute right-[-100px] top-[250px] w-[100px] h-[200px] border-r-8 border-y-8 border-rose-500/50 bg-rose-500/10 rounded-r-3xl shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]" />
         
         {/* Ramps visually */}
-        <div className="absolute bg-slate-700/80" style={{ left: 60 - 100, top: 60 - 25, width: 200, height: 50, transform: 'rotate(-45deg)' }} />
-        <div className="absolute bg-slate-700/80" style={{ left: 60 - 100, top: WORLD_HEIGHT - 60 - 25, width: 200, height: 50, transform: 'rotate(45deg)' }} />
-        <div className="absolute bg-slate-700/80" style={{ left: WORLD_WIDTH - 60 - 100, top: 60 - 25, width: 200, height: 50, transform: 'rotate(45deg)' }} />
-        <div className="absolute bg-slate-700/80" style={{ left: WORLD_WIDTH - 60 - 100, top: WORLD_HEIGHT - 60 - 25, width: 200, height: 50, transform: 'rotate(-45deg)' }} />
+        <div className="absolute bg-slate-700/80" style={{ left: 60 - 100, top: 60 - 25, width: 200, height: 50, transform: 'rotate(45deg)' }} />
+        <div className="absolute bg-slate-700/80" style={{ left: 60 - 100, top: WORLD_HEIGHT - 60 - 25, width: 200, height: 50, transform: 'rotate(-45deg)' }} />
+        <div className="absolute bg-slate-700/80" style={{ left: WORLD_WIDTH - 60 - 100, top: 60 - 25, width: 200, height: 50, transform: 'rotate(-45deg)' }} />
+        <div className="absolute bg-slate-700/80" style={{ left: WORLD_WIDTH - 60 - 100, top: WORLD_HEIGHT - 60 - 25, width: 200, height: 50, transform: 'rotate(45deg)' }} />
 
         {/* Outer Bounds styling */}
         <div className="absolute left-0 top-0 bottom-0 w-2 bg-slate-600 rounded-full" />
