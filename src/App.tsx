@@ -1,5 +1,6 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { useEffect, useRef, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { QRScanner } from './components/QRScanner';
 import { decodeDescription, getCompleteLocalDescription, rtcConfig } from './lib/webrtc';
 import { Smartphone, WifiOff, ScanLine, QrCode, BookOpen, Plus, ChevronRight, User, Volume2, VolumeX, Globe } from 'lucide-react';
@@ -26,8 +27,10 @@ type AppState =
   | 'HOSTING_SCAN_ANSWER'
   | 'HOSTING_CONNECTING'
   | 'HOSTING_GUEST_CONNECTED'
+  | 'HOST_ONLINE_LOBBY'
   | 'JOIN_CHOOSE_NAME'
   | 'JOIN_SCAN_OFFER'
+  | 'JOIN_ONLINE_LOBBY'
   | 'JOIN_CONNECTING'
   | 'JOIN_ANSWER'
   | 'LOBBY'
@@ -37,6 +40,11 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>('IDLE');
   const [localData, setLocalData] = useState<string>(''); // Base64 compressed SDP
   const [errorTimer, setErrorTimer] = useState<string | null>(null);
+  
+  // Socket.io for Online
+  const socketRef = useRef<Socket | null>(null);
+  const [availableHosts, setAvailableHosts] = useState<any[]>([]);
+  const [onlineHostId, setOnlineHostId] = useState<string | null>(null);
 
   // Identity
   const [playerName, setPlayerName] = useState<string>('');
@@ -145,6 +153,11 @@ export default function App() {
     setAppState('HOST_CHOOSE_NAME');
   };
 
+  const startJoinFlow = () => {
+    setIsHostRole(false);
+    setAppState('JOIN_CHOOSE_NAME');
+  };
+
   const createHostOffer = async () => {
     try {
       const guestId = `guest-${Date.now()}`;
@@ -216,9 +229,113 @@ export default function App() {
     }
   };
 
-  const startJoinFlow = () => {
+  const startOnlineHost = () => {
+    setIsHostRole(true);
+    setAppState('HOST_ONLINE_LOBBY');
+    
+    if (socketRef.current) socketRef.current.disconnect();
+    const socket = io({ path: '/socket.io' });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+       socket.emit('register_host', { name: playerName, online: true });
+    });
+
+    socket.on('host_request', async (data: { hostId: string, hostName: string }) => {
+       const guestSocketId = data.hostId;
+       
+       // Accept the request
+       socket.emit('client_accept_request', { hostId: guestSocketId, joinerName: playerName });
+       
+       const guestId = `guest-${guestSocketId}`;
+       setActiveGuestId(guestId);
+       
+       const peer = new RTCPeerConnection(rtcConfig);
+       peersRef.current.set(guestId, peer);
+
+       peer.oniceconnectionstatechange = () => {
+          if (peer.iceConnectionState === 'failed' || peer.iceConnectionState === 'disconnected') {
+              setErrorTimer(`Connection lost with ${data.hostName}`);
+          }
+       };
+
+       const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
+       channelsRef.current.set(guestId, channel);
+
+       channel.onopen = () => {
+         setConnectedGuests(prev => [...prev, { id: guestId, name: data.hostName }]);
+         // Send GO_TO_LOBBY to the new guest if we are already in lobby
+         channel.send(JSON.stringify({ type: 'SET_ID', payload: { id: guestId, guests: connectedGuests, hostName: playerName } }));
+       };
+       
+       const offer = await peer.createOffer();
+       await peer.setLocalDescription(offer);
+
+       // Wait for ICE complete
+       const compressedOffer = await getCompleteLocalDescription(peer, { hostName: playerName });
+       socket.emit('send_offer', { targetId: guestSocketId, sdp: compressedOffer });
+    });
+
+    socket.on('receive_answer', async (data: { sourceId: string, sdp: string }) => {
+       const guestId = `guest-${data.sourceId}`;
+       const peer = peersRef.current.get(guestId);
+       if (peer) {
+          const desc = decodeDescription(data.sdp);
+          await peer.setRemoteDescription(desc);
+       }
+    });
+  };
+
+  const startOnlineJoin = () => {
     setIsHostRole(false);
-    setAppState('JOIN_CHOOSE_NAME');
+    setAppState('JOIN_ONLINE_LOBBY');
+
+    if (socketRef.current) socketRef.current.disconnect();
+    const socket = io({ path: '/socket.io' });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+       socket.emit('register_client', { name: playerName, online: true });
+    });
+
+    socket.on('client_list_update', (clients: any[]) => {
+       const hosts = clients.filter(c => c.isHost);
+       setAvailableHosts(hosts);
+    });
+
+    socket.on('receive_offer', async (data: { sourceId: string, sdp: string }) => {
+       const hostSocketId = data.sourceId;
+       setAppState('JOIN_CONNECTING');
+       
+       const myId = 'host';
+       const peer = new RTCPeerConnection(rtcConfig);
+       peersRef.current.set(myId, peer);
+
+       peer.oniceconnectionstatechange = () => {
+          if (peer.iceConnectionState === 'failed' || peer.iceConnectionState === 'disconnected') {
+              setErrorTimer("Connection lost with host.");
+              setAppState('JOIN_ONLINE_LOBBY');
+          }
+       };
+
+       const channel = peer.createDataChannel('game', { negotiated: true, id: 0 });
+       channelsRef.current.set(myId, channel);
+       
+       const desc = decodeDescription(data.sdp);
+       await peer.setRemoteDescription(desc);
+
+       const answer = await peer.createAnswer();
+       await peer.setLocalDescription(answer);
+
+       const compressedAnswer = await getCompleteLocalDescription(peer, { guestName: playerName });
+       socket.emit('send_answer', { targetId: hostSocketId, sdp: compressedAnswer });
+    });
+  };
+
+  const joinOnlineHost = (hostSocketId: string) => {
+    setOnlineHostId(hostSocketId);
+    socketRef.current?.emit('host_request_client', { clientId: hostSocketId, hostName: playerName });
+    setAppState('JOIN_CONNECTING');
   };
 
   const joinScanOffer = async (decodedSdp: string) => {
@@ -283,6 +400,10 @@ export default function App() {
     channelsRef.current.clear();
     setConnectedGuests([]);
     setActiveGuestId(null);
+    if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+    }
   };
 
   return (
@@ -401,7 +522,15 @@ export default function App() {
                  className="w-full py-4 bg-indigo-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-indigo-600/20 font-bold text-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50"
                >
                  <QrCode className="w-5 h-5"/>
-                 Host via QR Scan
+                 Host Offline (QR Scan)
+               </button>
+               <button
+                 onClick={startOnlineHost}
+                 disabled={!playerName.trim()}
+                 className="w-full py-4 bg-neutral-900 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-neutral-900/20 font-bold text-lg hover:bg-neutral-800 active:scale-[0.98] transition-all disabled:opacity-50"
+               >
+                 <Globe className="w-5 h-5"/>
+                 Host Online (Global)
                </button>
             </div>
           </div>
@@ -429,7 +558,15 @@ export default function App() {
                  className="w-full py-4 bg-indigo-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-indigo-600/20 font-bold text-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50"
                >
                  <QrCode className="w-5 h-5"/>
-                 Scan Host QR
+                 Scan Offline QR
+               </button>
+               <button
+                 onClick={startOnlineJoin}
+                 disabled={!playerName.trim()}
+                 className="w-full py-4 bg-neutral-900 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-neutral-900/20 font-bold text-lg hover:bg-neutral-800 active:scale-[0.98] transition-all disabled:opacity-50"
+               >
+                 <Globe className="w-5 h-5"/>
+                 Find Online Hosts
                </button>
             </div>
           </div>
@@ -514,6 +651,87 @@ export default function App() {
                 Next <ChevronRight className="w-5 h-5" />
               </button>
             </div>
+          </div>
+        )}
+
+        {appState === 'HOST_ONLINE_LOBBY' && (
+          <div className="space-y-6 text-center w-full flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
+             <div>
+              <h2 className="text-3xl font-display font-bold mb-2 tracking-tight text-neutral-900">Online Lobby</h2>
+              <p className="text-lg text-neutral-500 font-medium mb-8">Waiting for players to join online...</p>
+            </div>
+
+            <div className="w-full bg-white rounded-3xl shadow-sm border border-neutral-200 p-4 space-y-3 mb-6">
+               <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <User className="w-6 h-6 text-indigo-600" />
+                  <span className="font-bold text-indigo-900 text-lg">{playerName || 'Host'} (You)</span>
+               </div>
+               {connectedGuests.map((guest) => (
+                 <div key={guest.id} className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100 animate-in slide-in-from-right">
+                    <User className="w-6 h-6 text-neutral-500" />
+                    <span className="font-bold text-neutral-800 text-lg">{guest.name}</span>
+                 </div>
+               ))}
+               {connectedGuests.length === 0 && (
+                 <div className="p-4 text-neutral-400 font-medium flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-neutral-300 border-t-neutral-400 rounded-full animate-spin"></div>
+                    Searching...
+                 </div>
+               )}
+            </div>
+
+            <button
+              onClick={() => {
+                channelsRef.current.forEach((channel, guestId) => {
+                   channel.send(JSON.stringify({ type: 'SET_ID', payload: { id: guestId, guests: connectedGuests, hostName: playerName } }));
+                });
+                setAppState('LOBBY');
+              }}
+              disabled={connectedGuests.length === 0}
+              className="w-full py-4 bg-indigo-600 text-white flex justify-center items-center gap-2 rounded-2xl shadow-lg shadow-indigo-600/20 font-bold text-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              Start Game <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
+        {appState === 'JOIN_ONLINE_LOBBY' && (
+          <div className="space-y-6 text-center w-full flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
+             <div>
+              <h2 className="text-3xl font-display font-bold mb-2 tracking-tight text-neutral-900">Available Hosts</h2>
+              <p className="text-lg text-neutral-500 font-medium mb-8">Select a host to join.</p>
+            </div>
+
+            <div className="w-full space-y-3">
+              {availableHosts.map((host) => (
+                 <button 
+                    key={host.id} 
+                    onClick={() => joinOnlineHost(host.id)}
+                    className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-neutral-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group"
+                 >
+                    <div className="flex items-center gap-3">
+                       <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
+                          <User className="w-5 h-5"/>
+                       </div>
+                       <span className="font-bold text-lg text-neutral-800">{host.name}</span>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-indigo-600 transition-colors" />
+                 </button>
+              ))}
+              {availableHosts.length === 0 && (
+                <div className="p-8 text-neutral-400 font-medium flex flex-col items-center justify-center gap-4 bg-white shadow-sm border border-neutral-200 rounded-3xl">
+                   <div className="w-8 h-8 border-4 border-neutral-200 border-t-indigo-400 rounded-full animate-spin"></div>
+                   Looking for public hosts...
+                </div>
+              )}
+            </div>
+            
+            <button
+               onClick={() => socketRef.current?.emit('get_clients', { online: true })}
+               className="mt-6 text-indigo-600 font-bold px-4 py-2 hover:bg-indigo-50 rounded-lg transition-colors"
+            >
+               Refresh List
+            </button>
           </div>
         )}
 

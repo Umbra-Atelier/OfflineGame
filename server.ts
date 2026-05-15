@@ -19,17 +19,22 @@ async function startServer() {
     socket.join(clientIp);
 
     socket.on("register_client", (data) => {
-       socket.data = { isHost: false, name: data?.name || 'Unknown Device', id: socket.id };
-       io.to(clientIp).emit("client_list_update", getClientsInRoom(clientIp));
+       const room = data?.online ? "GLOBAL_ONLINE" : clientIp;
+       socket.join(room);
+       socket.data = { isHost: false, name: data?.name || 'Unknown Device', id: socket.id, room };
+       io.to(room).emit("client_list_update", getClientsInRoom(room));
     });
 
     socket.on("register_host", (data) => {
-       socket.data = { isHost: true, name: data.name, id: socket.id };
-       io.to(clientIp).emit("client_list_update", getClientsInRoom(clientIp));
+       const room = data?.online ? "GLOBAL_ONLINE" : clientIp;
+       socket.join(room);
+       socket.data = { isHost: true, name: data.name, id: socket.id, room, game: data.game };
+       io.to(room).emit("client_list_update", getClientsInRoom(room));
     });
 
-    socket.on("get_clients", () => {
-       socket.emit("client_list_update", getClientsInRoom(clientIp));
+    socket.on("get_clients", (data) => {
+       const room = data?.online ? "GLOBAL_ONLINE" : clientIp;
+       socket.emit("client_list_update", getClientsInRoom(room));
     });
     
     // Host requests a specific client by socket ID
@@ -64,7 +69,8 @@ async function startServer() {
     });
 
     socket.on('disconnect', () => {
-       io.to(clientIp).emit("client_list_update", getClientsInRoom(clientIp));
+       const room = socket.data?.room || clientIp;
+       io.to(room).emit("client_list_update", getClientsInRoom(room));
     });
   });
   
