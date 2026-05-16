@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { GameMessage } from '../../types';
 import * as MatterPkg from 'matter-js';
 import { Trophy, Zap, AlertTriangle, ArrowLeft } from 'lucide-react';
-import { triggerHapticClick } from '../../lib/audioManager';
+import { triggerHapticClick, playGoalSound, playJumpSound } from '../../lib/audioManager';
 
 interface RocketLeagueProps {
   channel?: RTCDataChannel;
@@ -100,7 +100,7 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
     const M = MatterPkg.Engine ? MatterPkg : (MatterPkg as any).default || MatterPkg;
     const { Engine, World, Bodies, Body } = M;
 
-    const engine = Engine.create({ gravity: { x: 0, y: 0.8, scale: 0.001 } });
+    const engine = Engine.create({ gravity: { x: 0, y: 0.4, scale: 0.001 } });
     engineRef.current = engine;
 
     const cx = WORLD_WIDTH / 2;
@@ -126,13 +126,11 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
     const rightGoalTop = Bodies.rectangle(WORLD_WIDTH + 75, 240, 100, 20, { isStatic: true });
     const rightGoalBot = Bodies.rectangle(WORLD_WIDTH + 75, 460, 100, 20, { isStatic: true });
 
-    const rampW = 200;
-    const rampH = 50;
-    // Ramps
-    const tlRamp = Bodies.rectangle(60, 60, rampW, rampH, { isStatic: true, angle: Math.PI / 4 });
-    const blRamp = Bodies.rectangle(60, WORLD_HEIGHT - 60, rampW, rampH, { isStatic: true, angle: -Math.PI / 4 });
-    const trRamp = Bodies.rectangle(WORLD_WIDTH - 60, 60, rampW, rampH, { isStatic: true, angle: -Math.PI / 4 });
-    const brRamp = Bodies.rectangle(WORLD_WIDTH - 60, WORLD_HEIGHT - 60, rampW, rampH, { isStatic: true, angle: Math.PI / 4 });
+    // Ramps (Rounded corners)
+    const tlRamp = Bodies.circle(150, 150, 150, { isStatic: true });
+    const blRamp = Bodies.circle(150, WORLD_HEIGHT - 150, 150, { isStatic: true });
+    const trRamp = Bodies.circle(WORLD_WIDTH - 150, 150, 150, { isStatic: true });
+    const brRamp = Bodies.circle(WORLD_WIDTH - 150, WORLD_HEIGHT - 150, 150, { isStatic: true });
 
     const wallOpts = [
         ceiling, floor, 
@@ -146,15 +144,16 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
       restitution: 0.9,
       friction: 0.02,
       frictionAir: 0.005,
-      density: 0.0002, // much lighter ball
+      density: 0.0001, // much lighter ball
     });
 
     const createCar = (isP1: boolean) => {
       const car = Bodies.rectangle(isP1 ? 200 : WORLD_WIDTH - 200, WORLD_HEIGHT - 40, 80, 40, {
         restitution: 0.3,
         friction: 0.05, 
-        density: 0.003, // lighter car
+        density: 0.002, // lighter car
         frictionAir: 0.015,
+        chamfer: { radius: 10 }
       });
       return car;
     };
@@ -181,7 +180,7 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
 
       Body.setPosition(p2, { x: WORLD_WIDTH - 200, y: WORLD_HEIGHT - 100 });
       Body.setVelocity(p2, { x: 0, y: 0 });
-      Body.setAngle(p2, 0);
+      Body.setAngle(p2, Math.PI);
       Body.setAngularVelocity(p2, 0);
       
       gameData.current.p1Boost = MAX_BOOST;
@@ -199,8 +198,8 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
           msgType: 'STATE',
           state: {
             ball: { x: ball.position.x, y: ball.position.y, a: ball.angle },
-            p1: { x: p1.position.x, y: p1.position.y, a: p1.angle, b: gameData.current.p1Boost },
-            p2: { x: p2.position.x, y: p2.position.y, a: p2.angle, b: gameData.current.p2Boost },
+            p1: { x: p1.position.x, y: p1.position.y, a: p1.angle, b: gameData.current.p1Boost, boosting: localInput.current.boost },
+            p2: { x: p2.position.x, y: p2.position.y, a: p2.angle, b: gameData.current.p2Boost, boosting: guestInput.current.boost },
             s1: gameData.current.score1,
             s2: gameData.current.score2,
             phase: gameData.current.phase,
@@ -246,6 +245,7 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
           
           g.score2++;
           g.phase = 'GOAL';
+          playGoalSound();
           // apply little pop to ball
           M.Body.applyForce(b.ball, b.ball.position, {x: -0.05, y: 0});
         }
@@ -253,12 +253,13 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
           const M = MatterPkg.Engine ? MatterPkg : (MatterPkg as any).default || MatterPkg;
           g.score1++;
           g.phase = 'GOAL';
+          playGoalSound();
           M.Body.applyForce(b.ball, b.ball.position, {x: 0.05, y: 0});
         }
 
         const applyInput = (car: any, input: any, isP1: boolean) => {
           const M = MatterPkg.Engine ? MatterPkg : (MatterPkg as any).default || MatterPkg;
-          const grounded = car.position.y > WORLD_HEIGHT - 65; // roughly grounded
+          const grounded = car.position.y > WORLD_HEIGHT - 65 || car.position.y < 90 || car.position.x < 90 || car.position.x > WORLD_WIDTH - 90; // any surface
           let boostRef = isP1 ? 'p1Boost' : 'p2Boost';
           let doubleJumpRef = isP1 ? 'p1CanDoubleJump' : 'p2CanDoubleJump';
           let jumpResetRef = isP1 ? 'p1JumpReset' : 'p2JumpReset';
@@ -351,8 +352,8 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
       // Also update local ui
       setGameState({
           ball: { x: b.ball.position.x, y: b.ball.position.y, a: b.ball.angle },
-          p1: { x: b.p1.position.x, y: b.p1.position.y, a: b.p1.angle, b: g.p1Boost },
-          p2: { x: b.p2.position.x, y: b.p2.position.y, a: b.p2.angle, b: g.p2Boost },
+          p1: { x: b.p1.position.x, y: b.p1.position.y, a: b.p1.angle, b: g.p1Boost, boosting: localInput.current.boost },
+          p2: { x: b.p2.position.x, y: b.p2.position.y, a: b.p2.angle, b: g.p2Boost, boosting: guestInput.current.boost },
           s1: g.score1,
           s2: g.score2,
           phase: g.phase,
@@ -378,6 +379,9 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
           if (isHost && msg.payload.msgType === 'INPUT') {
             guestInput.current = msg.payload.input;
           } else if (!isHost && msg.payload.msgType === 'STATE') {
+             if (gameState && (msg.payload.state.s1 > gameState.s1 || msg.payload.state.s2 > gameState.s2)) {
+                 playGoalSound();
+             }
             setGameState(msg.payload.state);
           }
         }
@@ -399,6 +403,7 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
 
   const handleInputStart = (action: 'jump' | 'boost') => {
     triggerHapticClick();
+    if (action === 'jump') playJumpSound();
     localInput.current[action] = true;
     sendInput();
   };
@@ -492,11 +497,11 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
         <div className="absolute left-[-100px] top-[250px] w-[100px] h-[200px] border-l-8 border-y-8 border-indigo-500/50 bg-indigo-500/10 rounded-l-3xl shadow-[inset_0_0_50px_rgba(99,102,241,0.2)]" />
         <div className="absolute right-[-100px] top-[250px] w-[100px] h-[200px] border-r-8 border-y-8 border-rose-500/50 bg-rose-500/10 rounded-r-3xl shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]" />
         
-        {/* Ramps visually */}
-        <div className="absolute bg-slate-700/80" style={{ left: 60 - 100, top: 60 - 25, width: 200, height: 50, transform: 'rotate(45deg)' }} />
-        <div className="absolute bg-slate-700/80" style={{ left: 60 - 100, top: WORLD_HEIGHT - 60 - 25, width: 200, height: 50, transform: 'rotate(-45deg)' }} />
-        <div className="absolute bg-slate-700/80" style={{ left: WORLD_WIDTH - 60 - 100, top: 60 - 25, width: 200, height: 50, transform: 'rotate(-45deg)' }} />
-        <div className="absolute bg-slate-700/80" style={{ left: WORLD_WIDTH - 60 - 100, top: WORLD_HEIGHT - 60 - 25, width: 200, height: 50, transform: 'rotate(45deg)' }} />
+        {/* Ramps visually (rounded corners) */}
+        <div className="absolute top-0 left-0 w-[150px] h-[150px] border-t-[16px] border-l-[16px] border-slate-600 rounded-tl-full" />
+        <div className="absolute bottom-0 left-0 w-[150px] h-[150px] border-b-[16px] border-l-[16px] border-slate-600 rounded-bl-full" />
+        <div className="absolute top-0 right-0 w-[150px] h-[150px] border-t-[16px] border-r-[16px] border-slate-600 rounded-tr-full" />
+        <div className="absolute bottom-0 right-0 w-[150px] h-[150px] border-b-[16px] border-r-[16px] border-slate-600 rounded-br-full" />
 
         {/* Outer Bounds styling */}
         <div className="absolute left-0 top-0 bottom-0 w-2 bg-slate-600 rounded-full" />
@@ -522,7 +527,7 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
                          <div className="absolute right-2 top-1 bottom-1 w-6 bg-indigo-300/80 rounded-sm" />
                     </div>
                     {/* Exhaust visual */}
-                    {gameState.p1.b < MAX_BOOST && <div className="absolute left-[-30px] top-1/2 -translate-y-1/2 w-[40px] h-[15px] bg-sky-300 blur-[4px] rounded-full z-10" />}
+                    {gameState.p1.boosting && gameState.p1.b > 0 && <div className="absolute left-[-30px] top-1/2 -translate-y-1/2 w-[40px] h-[15px] bg-sky-300 blur-[4px] rounded-full z-10" />}
                     {/* Wheels */}
                     <div className="absolute left-[10%] -bottom-2 w-[24px] h-[24px] bg-slate-800 rounded-full border-[4px] border-slate-950 z-30 flex items-center justify-center">
                         <div className="w-2 h-2 bg-slate-500 rounded-full" />
@@ -539,7 +544,7 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
                          <div className="absolute left-2 top-1 bottom-1 w-6 bg-rose-300/80 rounded-sm" />
                     </div>
                     {/* Exhaust visual */}
-                    {gameState.p2.b < MAX_BOOST && <div className="absolute right-[-30px] top-1/2 -translate-y-1/2 w-[40px] h-[15px] bg-sky-300 blur-[4px] rounded-full z-10" />}
+                    {gameState.p2.boosting && gameState.p2.b > 0 && <div className="absolute right-[-30px] top-1/2 -translate-y-1/2 w-[40px] h-[15px] bg-sky-300 blur-[4px] rounded-full z-10" />}
                     {/* Wheels */}
                     <div className="absolute left-[10%] -bottom-2 w-[24px] h-[24px] bg-slate-800 rounded-full border-[4px] border-slate-950 z-30 flex items-center justify-center">
                         <div className="w-2 h-2 bg-slate-500 rounded-full" />

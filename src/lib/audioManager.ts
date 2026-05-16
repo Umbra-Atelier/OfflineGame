@@ -66,7 +66,7 @@ export const stopMusic = () => {
   currentTrack = null;
 };
 
-export const playMusic = (track: 'LOBBY' | 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE') => {
+export const playMusic = (track: 'LOBBY' | 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'ROCKET_LEAGUE' | 'CARD_BATTLE') => {
   if (currentTrack === track) return; // Already playing
   if (isMuted) return;
   
@@ -172,6 +172,25 @@ export const playMusic = (track: 'LOBBY' | 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDE
       loops.push(loop);
       loop.start(0);
       Tone.Transport.bpm.value = 60;
+      
+    } else if (track === 'ROCKET_LEAGUE' || track === 'CARD_BATTLE') {
+      // Fast paced EDM feel
+      const synth = new Tone.FMSynth({
+        harmonicity: 1.5,
+        modulationIndex: 5,
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.05, decay: 0.2, sustain: 0, release: 0.2 }
+      }).toDestination();
+      synth.volume.value = -15;
+      synths.push(synth);
+      
+      const seq = new Tone.Sequence((time, note) => {
+        if (note) synth.triggerAttackRelease(note, "8n", time);
+      }, ["C3", "C3", "D#3", "F3", "G3", "C4", "A#3", "G3"], "8n");
+      
+      loops.push(seq);
+      seq.start(0);
+      Tone.Transport.bpm.value = 150;
     }
     
     Tone.Transport.start();
@@ -179,3 +198,43 @@ export const playMusic = (track: 'LOBBY' | 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDE
     console.error("Music playback failed", e);
   }
 };
+
+let effectSynth: Tone.PolySynth | null = null;
+let noiseSynth: Tone.NoiseSynth | null = null;
+
+const getEffectSynth = () => {
+    if (isMuted) return null;
+    if (!effectSynth) {
+        effectSynth = new Tone.PolySynth(Tone.Synth, {
+            envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 1 }
+        }).toDestination();
+        effectSynth.volume.value = -10;
+        
+        noiseSynth = new Tone.NoiseSynth({
+            noise: { type: "white" },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.05 }
+        }).toDestination();
+        noiseSynth.volume.value = -15;
+    }
+    return effectSynth;
+}
+
+export const playJumpSound = () => {
+    const synth = getEffectSynth();
+    if (synth) synth.triggerAttackRelease("C4", "16n");
+}
+
+export const playBoostSound = () => {
+    const synth = getEffectSynth();
+    if (noiseSynth) noiseSynth.triggerAttackRelease("16n");
+}
+
+export const playGoalSound = () => {
+    const synth = getEffectSynth();
+    if (synth) synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "2n");
+}
+
+export const playHitSound = () => {
+    const synth = getEffectSynth();
+    if (synth) synth.triggerAttackRelease("C2", "32n");
+}
