@@ -108,7 +108,7 @@ export default function App() {
 
   // Handle global lobby messages
   useEffect(() => {
-    if ((appState === 'LOBBY' || appState === 'PLAYING' || appState === 'JOIN_ANSWER' || appState === 'JOIN_CONNECTING')) {
+    if ((appState === 'LOBBY' || appState === 'PLAYING' || appState === 'JOIN_ANSWER' || appState === 'JOIN_CONNECTING' || appState === 'JOIN_WAITING_FOR_HOST')) {
       const handleGlobalMessage = (event: MessageEvent) => {
         try {
           const msg: BaseMessage = JSON.parse(event.data);
@@ -237,14 +237,17 @@ export default function App() {
     setIsHostRole(true);
     setAppState('HOST_ONLINE_LOBBY');
     
-    if (mqttRef.current) mqttRef.current.end();
+    if (mqttRef.current && myMqttIdRef.current && mqttRef.current.connected) {
+        mqttRef.current.publish(`tt-arcade-v3/lobby/hosts/${myMqttIdRef.current}`, '', { retain: true, qos: 1 });
+        mqttRef.current.end();
+    }
     const myId = `host-${Math.random().toString(36).substring(2, 9)}`;
     myMqttIdRef.current = myId;
 
     const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
       clientId: myId,
       will: {
-        topic: `tt-minigames/lobby/hosts/${myId}`,
+        topic: `tt-arcade-v3/lobby/hosts/${myId}`,
         payload: '',
         retain: true,
         qos: 1
@@ -253,18 +256,18 @@ export default function App() {
     mqttRef.current = client;
 
     client.on('connect', () => {
-       client.publish(`tt-minigames/lobby/hosts/${myId}`, JSON.stringify({ name: playerName }), { retain: true, qos: 1 });
-       client.subscribe(`tt-minigames/lobby/p/${myId}`);
+       client.publish(`tt-arcade-v3/lobby/hosts/${myId}`, JSON.stringify({ name: playerName }), { retain: true, qos: 1 });
+       client.subscribe(`tt-arcade-v3/lobby/p/${myId}`);
     });
 
     client.on('message', async (topic, message) => {
-       if (topic === `tt-minigames/lobby/p/${myId}`) {
+       if (topic === `tt-arcade-v3/lobby/p/${myId}`) {
           const data = JSON.parse(message.toString());
           if (data.type === 'host_request') {
              const guestMqttId = data.sourceId;
              
              // Accept the request
-             client.publish(`tt-minigames/lobby/p/${guestMqttId}`, JSON.stringify({ type: 'client_accept_request' }));
+             client.publish(`tt-arcade-v3/lobby/p/${guestMqttId}`, JSON.stringify({ type: 'client_accept_request' }));
              
              const guestId = `guest-${guestMqttId}`;
              setActiveGuestId(guestId);
@@ -291,7 +294,7 @@ export default function App() {
              await peer.setLocalDescription(offer);
 
              const compressedOffer = await getCompleteLocalDescription(peer, { hostName: playerName });
-             client.publish(`tt-minigames/lobby/p/${guestMqttId}`, JSON.stringify({ type: 'receive_offer', sourceId: myId, sdp: compressedOffer }));
+             client.publish(`tt-arcade-v3/lobby/p/${guestMqttId}`, JSON.stringify({ type: 'receive_offer', sourceId: myId, sdp: compressedOffer }));
           } else if (data.type === 'receive_answer') {
              const guestId = `guest-${data.sourceId}`;
              const peer = peersRef.current.get(guestId);
@@ -316,13 +319,13 @@ export default function App() {
     mqttRef.current = client;
 
     client.on('connect', () => {
-       client.subscribe(`tt-minigames/lobby/hosts/+`);
-       client.subscribe(`tt-minigames/lobby/p/${myId}`);
+       client.subscribe(`tt-arcade-v3/lobby/hosts/+`);
+       client.subscribe(`tt-arcade-v3/lobby/p/${myId}`);
        setAvailableHosts([]);
     });
 
     client.on('message', async (topic, message) => {
-       if (topic.startsWith('tt-minigames/lobby/hosts/')) {
+       if (topic.startsWith('tt-arcade-v3/lobby/hosts/')) {
           const hostId = topic.split('/').pop();
           if (message.length === 0) {
              setAvailableHosts(prev => prev.filter(h => h.id !== hostId));
@@ -335,7 +338,7 @@ export default function App() {
                });
              } catch (e) {}
           }
-       } else if (topic === `tt-minigames/lobby/p/${myId}`) {
+       } else if (topic === `tt-arcade-v3/lobby/p/${myId}`) {
           const data = JSON.parse(message.toString());
           if (data.type === 'receive_offer') {
              const hostMqttId = data.sourceId;
@@ -367,7 +370,7 @@ export default function App() {
              await peer.setLocalDescription(answer);
 
              const compressedAnswer = await getCompleteLocalDescription(peer, { guestName: playerName });
-             client.publish(`tt-minigames/lobby/p/${hostMqttId}`, JSON.stringify({ type: 'receive_answer', sourceId: myId, sdp: compressedAnswer }));
+             client.publish(`tt-arcade-v3/lobby/p/${hostMqttId}`, JSON.stringify({ type: 'receive_answer', sourceId: myId, sdp: compressedAnswer }));
           }
        }
     });
@@ -376,7 +379,7 @@ export default function App() {
   const joinOnlineHost = (hostId: string) => {
     setOnlineHostId(hostId);
     if (mqttRef.current && myMqttIdRef.current) {
-        mqttRef.current.publish(`tt-minigames/lobby/p/${hostId}`, JSON.stringify({ type: 'host_request', sourceId: myMqttIdRef.current, hostName: playerName }));
+        mqttRef.current.publish(`tt-arcade-v3/lobby/p/${hostId}`, JSON.stringify({ type: 'host_request', sourceId: myMqttIdRef.current, hostName: playerName }));
     }
     setAppState('JOIN_CONNECTING');
   };
@@ -445,6 +448,9 @@ export default function App() {
     setConnectedGuests([]);
     setActiveGuestId(null);
     if (mqttRef.current) {
+        if (myMqttIdRef.current && isHostRole && mqttRef.current.connected) {
+             mqttRef.current.publish(`tt-arcade-v3/lobby/hosts/${myMqttIdRef.current}`, '', { retain: true, qos: 1 });
+        }
         mqttRef.current.end();
         mqttRef.current = null;
     }
@@ -688,7 +694,9 @@ export default function App() {
               <button
                 onClick={() => {
                   channelsRef.current.forEach((channel, guestId) => {
-                     channel.send(JSON.stringify({ type: 'SET_ID', payload: { id: guestId, guests: connectedGuests, hostName: playerName } }));
+                     if (channel.readyState === 'open') {
+                         channel.send(JSON.stringify({ type: 'SET_ID', payload: { id: guestId, guests: connectedGuests, hostName: playerName } }));
+                     }
                   });
                   setAppState('LOBBY');
                 }}
@@ -727,7 +735,9 @@ export default function App() {
             <button
               onClick={() => {
                 channelsRef.current.forEach((channel, guestId) => {
-                   channel.send(JSON.stringify({ type: 'SET_ID', payload: { id: guestId, guests: connectedGuests, hostName: playerName } }));
+                   if (channel.readyState === 'open') {
+                       channel.send(JSON.stringify({ type: 'SET_ID', payload: { id: guestId, guests: connectedGuests, hostName: playerName } }));
+                   }
                 });
                 setAppState('LOBBY');
               }}
@@ -773,9 +783,9 @@ export default function App() {
             <button
                onClick={() => {
                    setAvailableHosts([]);
-                   mqttRef.current?.unsubscribe('tt-minigames/lobby/hosts/+');
+                   mqttRef.current?.unsubscribe('tt-arcade-v3/lobby/hosts/+');
                    setTimeout(() => {
-                       mqttRef.current?.subscribe('tt-minigames/lobby/hosts/+');
+                       mqttRef.current?.subscribe('tt-arcade-v3/lobby/hosts/+');
                    }, 100);
                }}
                className="mt-6 text-indigo-600 font-bold px-4 py-2 hover:bg-indigo-50 rounded-lg transition-colors"

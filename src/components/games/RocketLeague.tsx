@@ -127,10 +127,11 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
     const rightGoalBot = Bodies.rectangle(WORLD_WIDTH + 75, 460, 100, 20, { isStatic: true });
 
     // Ramps (Rounded corners)
-    const tlRamp = Bodies.circle(150, 150, 150, { isStatic: true });
-    const blRamp = Bodies.circle(150, WORLD_HEIGHT - 150, 150, { isStatic: true });
-    const trRamp = Bodies.circle(WORLD_WIDTH - 150, 150, 150, { isStatic: true });
-    const brRamp = Bodies.circle(WORLD_WIDTH - 150, WORLD_HEIGHT - 150, 150, { isStatic: true });
+    const rampSize = 300;
+    const tlRamp = Bodies.rectangle(0, 0, rampSize, rampSize, { isStatic: true, chamfer: { radius: rampSize / 2 } });
+    const blRamp = Bodies.rectangle(0, WORLD_HEIGHT, rampSize, rampSize, { isStatic: true, chamfer: { radius: rampSize / 2 } });
+    const trRamp = Bodies.rectangle(WORLD_WIDTH, 0, rampSize, rampSize, { isStatic: true, chamfer: { radius: rampSize / 2 } });
+    const brRamp = Bodies.rectangle(WORLD_WIDTH, WORLD_HEIGHT, rampSize, rampSize, { isStatic: true, chamfer: { radius: rampSize / 2 } });
 
     const wallOpts = [
         ceiling, floor, 
@@ -498,10 +499,10 @@ export function RocketLeague({ channel, isHost, onBackToLobby }: RocketLeaguePro
         <div className="absolute right-[-100px] top-[250px] w-[100px] h-[200px] border-r-8 border-y-8 border-rose-500/50 bg-rose-500/10 rounded-r-3xl shadow-[inset_0_0_50px_rgba(244,63,94,0.2)]" />
         
         {/* Ramps visually (rounded corners) */}
-        <div className="absolute top-0 left-0 w-[150px] h-[150px] border-t-[16px] border-l-[16px] border-slate-600 rounded-tl-full" />
-        <div className="absolute bottom-0 left-0 w-[150px] h-[150px] border-b-[16px] border-l-[16px] border-slate-600 rounded-bl-full" />
-        <div className="absolute top-0 right-0 w-[150px] h-[150px] border-t-[16px] border-r-[16px] border-slate-600 rounded-tr-full" />
-        <div className="absolute bottom-0 right-0 w-[150px] h-[150px] border-b-[16px] border-r-[16px] border-slate-600 rounded-br-full" />
+        <div className="absolute top-[-150px] left-[-150px] w-[300px] h-[300px] bg-slate-700/50 border-[8px] border-slate-600 rounded-full" />
+        <div className="absolute bottom-[-150px] left-[-150px] w-[300px] h-[300px] bg-slate-700/50 border-[8px] border-slate-600 rounded-full" />
+        <div className="absolute top-[-150px] right-[-150px] w-[300px] h-[300px] bg-slate-700/50 border-[8px] border-slate-600 rounded-full" />
+        <div className="absolute bottom-[-150px] right-[-150px] w-[300px] h-[300px] bg-slate-700/50 border-[8px] border-slate-600 rounded-full" />
 
         {/* Outer Bounds styling */}
         <div className="absolute left-0 top-0 bottom-0 w-2 bg-slate-600 rounded-full" />
