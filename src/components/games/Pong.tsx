@@ -100,11 +100,13 @@ export function Pong({ channel, isHost, onBackToLobby }: PongProps) {
     
     const rect = canvas.getBoundingClientRect();
     const touch = e.touches[0];
-    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleX = CANVAS_WIDTH / (rect.width || 1);
     const x = (touch.clientX - rect.left) * scaleX - PADDLE_WIDTH / 2;
     
-    myPaddleRef.current.x = Math.max(0, Math.min(x, CANVAS_WIDTH - PADDLE_WIDTH));
-    sendMessage({ type: 'PADDLE_MOVED', x: myPaddleRef.current.x });
+    if (!isNaN(x)) {
+      myPaddleRef.current.x = Math.max(0, Math.min(x, CANVAS_WIDTH - PADDLE_WIDTH));
+      sendMessage({ type: 'PADDLE_MOVED', x: myPaddleRef.current.x });
+    }
   };
 
   // Game Loop
@@ -227,11 +229,13 @@ export function Pong({ channel, isHost, onBackToLobby }: PongProps) {
 
       // My Paddle (Always Bottom)
       ctx.fillStyle = '#4F46E5'; // Indigo
-      ctx.fillRect(myPaddleRef.current.x, CANVAS_HEIGHT - PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_HEIGHT);
+      const myX = isNaN(myPaddleRef.current.x) ? CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2 : myPaddleRef.current.x;
+      ctx.fillRect(myX, CANVAS_HEIGHT - PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_HEIGHT);
 
       // Their Paddle (Always Top)
       ctx.fillStyle = '#EF4444'; // Red
-      ctx.fillRect(theirPaddleRef.current.x, 0, PADDLE_WIDTH, PADDLE_HEIGHT);
+      const theirX = isNaN(theirPaddleRef.current.x) ? CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2 : theirPaddleRef.current.x;
+      ctx.fillRect(theirX, 0, PADDLE_WIDTH, PADDLE_HEIGHT);
 
       // Ball
       ctx.fillStyle = '#FFFFFF';

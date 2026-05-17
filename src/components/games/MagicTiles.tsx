@@ -326,7 +326,7 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
 
     reqId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(reqId);
-  }, []);
+  }, [inLobby]);
 
   const sendPayload = (payload: any) => {
     if (channel.readyState === 'open') {
