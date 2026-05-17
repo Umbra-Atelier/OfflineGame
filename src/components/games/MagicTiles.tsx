@@ -18,6 +18,8 @@ interface Tile {
   hitState?: 'good' | 'perfect'; // Visual cue when flying up
 }
 
+type SequenceItem = { lane: number, note: string, dt: number };
+
 const MELODY = [
   "E5", "D#5", "E5", "D#5", "E5", "B4", "D5", "C5", "A4",
   "C4", "E4", "A4", "B4",
@@ -26,6 +28,12 @@ const MELODY = [
   "C4", "E4", "A4", "B4",
   "E4", "C5", "B4", "A4"
 ];
+
+const getLaneForNote = (note: string) => {
+    let sum = 0;
+    for (let i = 0; i < note.length; i++) sum += note.charCodeAt(i);
+    return sum % 4;
+};
 
 export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,12 +47,44 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
     tiles: [] as Tile[],
     lives: 20,
     opponentLives: 20,
-    startTime: 0,
+    
+    round: 1,
+    phase: 'CHORUS' as 'CHORUS' | 'OPP_SONG',
+    
     spawnQueue: [] as { time: number, lane: number, note: string, speed: number }[],
+    
+    myHits: [] as SequenceItem[],
+    opponentHits: [] as SequenceItem[],
+    lastHitTime: 0,
+    
+    myPhaseComplete: false,
+    opponentPhaseComplete: false,
+    
+    errorLanes: [] as {lane: number, time: number}[],
     gameOver: null as string | null
   });
 
   const broadcastInfo = useRef<{ type: string; [key: string]: any }[]>([]);
+
+  const generateChorus = (round: number) => {
+      const baseSpeed = 0.4 * Math.pow(1.15, round - 1);
+      const targetDistance = 0.4 * 0.5; // fixed distance interval
+      const currentDt = targetDistance / baseSpeed;
+      
+      const queue: {time: number, lane: number, note: string, speed: number}[] = [];
+      let t = (performance.now() / 1000) + 2.0; // 2 seconds prep
+      
+      MELODY.forEach(note => {
+          queue.push({
+             time: t,
+             lane: getLaneForNote(note),
+             note: note,
+             speed: baseSpeed
+          });
+          t += currentDt;
+      });
+      return queue;
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -52,16 +92,7 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
         const message = JSON.parse(event.data);
         if (message.type === 'GAME_MESSAGE' && message.game === 'MAGIC_TILES') {
           const data = message.payload;
-          if (data.type === 'SEND_TILE') {
-            gameState.current.tiles.push({
-              id: Math.random().toString(),
-              lane: 3 - data.lane, // Mirror the lane! Left for them is Right for us.
-              direction: 'down',
-              y: -0.1,
-              speed: data.speed,
-              note: data.note,
-            });
-          } else if (data.type === 'UPDATE_LIVES') {
+          if (data.type === 'UPDATE_LIVES') {
             gameState.current.opponentLives = data.lives;
             setOpponentLives(data.lives);
           } else if (data.type === 'GAME_OVER') {
@@ -69,6 +100,9 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
             setGameOver(data.winner);
           } else if (data.type === 'REMATCH') {
             resetGame();
+          } else if (data.type === 'PHASE_COMPLETE') {
+            gameState.current.opponentPhaseComplete = true;
+            gameState.current.opponentHits = data.hits;
           }
         }
       } catch (err) {}
@@ -80,14 +114,14 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
 
   // Start initial tiles
   useEffect(() => {
-    if (isHost && !gameOver && gameState.current.tiles.length === 0 && gameState.current.spawnQueue.length === 0) {
+    if (!gameOver && gameState.current.tiles.length === 0 && gameState.current.spawnQueue.length === 0) {
       setTimeout(() => {
         if (!gameState.current.gameOver) {
             resetGame();
         }
       }, 1000);
     }
-  }, [isHost, gameOver]);
+  }, [gameOver]);
 
   // Main game loop
   useEffect(() => {
@@ -100,13 +134,57 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
     let reqId: number;
 
     const draw = (time: number) => {
-      const nowSec = performance.now() / 1000;
+      const nowSec = time / 1000;
       const dt = (time - lastTime) / 1000; // delta time in seconds
       lastTime = time;
 
       if (!gameState.current.gameOver) {
-          // Update physics
           const state = gameState.current;
+
+          // Phase transition logic
+          const tilesOnScreen = state.tiles.filter(t => t.direction === 'down').length;
+          if (tilesOnScreen === 0 && state.spawnQueue.length === 0) {
+             if (!state.myPhaseComplete) {
+                 state.myPhaseComplete = true;
+                 broadcastInfo.current.push({ 
+                     type: 'PHASE_COMPLETE', 
+                     phase: state.phase, 
+                     hits: state.myHits 
+                 });
+             }
+          }
+
+          if (state.myPhaseComplete && state.opponentPhaseComplete) {
+              state.myPhaseComplete = false;
+              state.opponentPhaseComplete = false;
+              
+              const baseSpeed = 0.4 * Math.pow(1.15, state.round - 1);
+              
+              if (state.phase === 'CHORUS') {
+                  state.phase = 'OPP_SONG';
+                  let t = nowSec + 2.0; // 2s pause
+                  state.opponentHits.forEach(hit => {
+                      const safeDt = Math.min(Math.max(hit.dt, 0.1), 2.0);
+                      t += safeDt;
+                      state.spawnQueue.push({
+                          time: t,
+                          lane: 3 - hit.lane, // Mirror!
+                          note: hit.note,
+                          speed: baseSpeed
+                      });
+                  });
+                  state.myHits = [];
+                  state.opponentHits = [];
+                  state.lastHitTime = 0;
+              } else {
+                  state.phase = 'CHORUS';
+                  state.round += 1;
+                  state.myHits = [];
+                  state.opponentHits = [];
+                  state.lastHitTime = 0;
+                  state.spawnQueue = generateChorus(state.round);
+              }
+          }
 
           // Spawn queued tiles
           while (state.spawnQueue.length > 0 && nowSec >= state.spawnQueue[0].time) {
@@ -134,15 +212,14 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
                        if (state.lives <= 0) {
                            state.gameOver = 'Opponent won!';
                            setGameOver('Opponent won!');
-                           broadcastInfo.current.push({ type: 'GAME_OVER', winner: 'Host won!' /* wait, fix this later */ });
+                           broadcastInfo.current.push({ type: 'GAME_OVER', winner: 'You won!' });
                        }
                    }
                } else {
                    // Flying up!
-                   t.y -= t.speed * (dt * 1.5); // fly up a bit faster visually
+                   t.y -= t.speed * (dt * 1.5);
                    if (t.y < -0.1) {
                        state.tiles.splice(i, 1);
-                       broadcastInfo.current.push({ type: 'SEND_TILE', lane: t.lane, speed: Math.min(t.speed, 2.5), note: t.note }); 
                    }
                }
           }
@@ -150,13 +227,11 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
           // Process broadcasts
           while (broadcastInfo.current.length > 0) {
               const msg = broadcastInfo.current.shift()!;
-              if (msg.type === 'GAME_OVER') {
-                  // If my lives hit 0, opponent won. Let's send the text they should see.
-                   sendPayload({ type: 'GAME_OVER', winner: 'You won!' });
-              } else {
-                   sendPayload(msg);
-              }
+              sendPayload(msg);
           }
+          
+          // Cleanup error lanes
+          state.errorLanes = state.errorLanes.filter(e => nowSec - e.time < 0.2);
       }
 
       // Render
@@ -164,8 +239,16 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
-      // Draw lanes
+      // Draw error background
       const laneWidth = w / 4;
+      for (let i = 0; i < 4; i++) {
+        const errorLane = gameState.current.errorLanes.find(e => e.lane === i);
+        if (errorLane && nowSec - errorLane.time < 0.2) {
+             ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; // red-500
+             ctx.fillRect(i * laneWidth, 0, laneWidth, h);
+        }
+      }
+
       ctx.strokeStyle = '#e5e7eb';
       ctx.lineWidth = 2;
       for (let i = 1; i < 4; i++) {
@@ -236,15 +319,12 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
 
      const state = gameState.current;
      
-     // Note: visual coordinates. y=0 is top, y=1 is bottom. 
-     // Hit zone is between roughly 0.7 and 1.0
      const hitZoneStart = 0.65;
      const hitZoneEnd = 1.05;
 
      let bestTileIndex = -1;
      let lowestY = -1;
 
-     // Find lowest tile in hit zone
      for (let i = 0; i < state.tiles.length; i++) {
          const t = state.tiles[i];
          if (t.lane === lane && t.direction === 'down' && t.y > hitZoneStart && t.y < hitZoneEnd) {
@@ -261,7 +341,15 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
          state.tiles.splice(bestTileIndex, 1);
          playMagicTileNote(t.note);
 
-         // speed up!
+         const nowSec = performance.now() / 1000;
+         let dt = 0.5;
+         if (state.lastHitTime !== 0) {
+             dt = nowSec - state.lastHitTime;
+         }
+         state.lastHitTime = nowSec;
+         state.myHits.push({ lane, note: t.note, dt });
+
+         // speed effect logic
          const newSpeed = t.speed * 1.02;
          let hitState: 'good' | 'perfect' = 'good';
          if (t.y > 0.75 && t.y < 0.90) {
@@ -277,6 +365,21 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
              hitState,
              note: t.note
          });
+     } else {
+         // Empty tap penalty
+         state.lives -= 1;
+         setLives(state.lives);
+         state.errorLanes.push({ lane, time: performance.now() / 1000 });
+         
+         if (channel.readyState === 'open') {
+             broadcastInfo.current.push({ type: 'UPDATE_LIVES', lives: state.lives });
+         }
+         
+         if (state.lives <= 0) {
+             state.gameOver = 'Opponent won!';
+             setGameOver('Opponent won!');
+             broadcastInfo.current.push({ type: 'GAME_OVER', winner: 'You won!' });
+         }
      }
   };
 
@@ -304,21 +407,20 @@ export function MagicTiles({ channel, isHost, onBackToLobby }: MagicTilesProps) 
         tiles: [],
         lives: 20,
         opponentLives: 20,
-        startTime: performance.now() / 1000,
-        spawnQueue: [],
+        round: 1,
+        phase: 'CHORUS',
+        spawnQueue: generateChorus(1),
+        myHits: [],
+        opponentHits: [],
+        lastHitTime: 0,
+        myPhaseComplete: false,
+        opponentPhaseComplete: false,
+        errorLanes: [],
         gameOver: null
       };
       setLives(20);
       setOpponentLives(20);
       setGameOver(null);
-      if (isHost) {
-          gameState.current.spawnQueue = MELODY.map((note, idx) => ({
-             time: (performance.now() / 1000) + 1.0 + (idx * 0.5),
-             lane: Math.floor(Math.random() * 4),
-             note: note,
-             speed: 0.4
-          }));
-      }
   };
 
   const requestRematch = () => {
