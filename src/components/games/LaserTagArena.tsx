@@ -196,7 +196,16 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
            const msg = JSON.parse(e.data);
            if (msg.type === 'LASER_TAG_STATE' && !isHost) {
                // Full state sync from host
+               const myCurrent = gameStateRef.current.players[myId];
                gameStateRef.current = msg.state;
+               
+               // Prevent local player rubberbanding (client-authoritative movement)
+               // Only accept host position if we were dead and are respawning
+               if (myCurrent && myCurrent.health > 0 && gameStateRef.current.players[myId]?.health > 0) {
+                   gameStateRef.current.players[myId].position = myCurrent.position;
+                   gameStateRef.current.players[myId].rotationY = myCurrent.rotationY;
+               }
+
                if (msg.winner) {
                   setGameOver(msg.winner);
                }
@@ -223,24 +232,28 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
                            p.health -= 25;
                            if (p.health <= 0) {
                                p.health = 0;
-                               // Give score to shooter
-                               gameStateRef.current.players[msg.sourceId].score += 1;
                                playSound(150, 'sawtooth', 0.5); // Death sound
                                
-                               // Check win
-                               if (gameStateRef.current.players[msg.sourceId].score >= MAX_SCORE) {
-                                   const winnerMsg = { winnerId: msg.sourceId, winnerName: gameStateRef.current.players[msg.sourceId].name };
-                                   broadcastMsg({ type: 'LASER_TAG_STATE', state: gameStateRef.current, winner: winnerMsg });
-                                   setGameOver(winnerMsg);
-                               } else {
-                                   // Respawn them after 3 seconds
-                                   setTimeout(() => {
-                                      if (gameStateRef.current.players[msg.hitId]) {
-                                          gameStateRef.current.players[msg.hitId].health = INITIAL_HEALTH;
-                                          gameStateRef.current.players[msg.hitId].position = [(Math.random() - 0.5) * 20, 1, (Math.random() - 0.5) * 20];
-                                      }
-                                   }, 3000);
+                               // Give score to shooter if they exist
+                               if (gameStateRef.current.players[msg.sourceId]) {
+                                   gameStateRef.current.players[msg.sourceId].score += 1;
+                                   
+                                   // Check win
+                                   if (gameStateRef.current.players[msg.sourceId].score >= MAX_SCORE) {
+                                       const winnerMsg = { winnerId: msg.sourceId, winnerName: gameStateRef.current.players[msg.sourceId].name };
+                                       broadcastMsg({ type: 'LASER_TAG_STATE', state: gameStateRef.current, winner: winnerMsg });
+                                       setGameOver(winnerMsg);
+                                       return; // Skip respawn if game over
+                                   }
                                }
+
+                               // Respawn them after 3 seconds
+                               setTimeout(() => {
+                                  if (gameStateRef.current.players[msg.hitId]) {
+                                      gameStateRef.current.players[msg.hitId].health = INITIAL_HEALTH;
+                                      gameStateRef.current.players[msg.hitId].position = [(Math.random() - 0.5) * 20, 1, (Math.random() - 0.5) * 20];
+                                  }
+                               }, 3000);
                            } else {
                                playSound(400, 'square', 0.1); // Hit marker sound
                            }
@@ -478,6 +491,17 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
           if (containerRef.current && renderer.domElement) {
               containerRef.current.removeChild(renderer.domElement);
           }
+          // Clean up Three.js resources to prevent memory leaks
+          scene.traverse((object: any) => {
+              if (object.isMesh) {
+                  object.geometry.dispose();
+                  if (object.material.isMaterial) {
+                      object.material.dispose();
+                  } else if (Array.isArray(object.material)) {
+                      object.material.forEach((m: any) => m.dispose());
+                  }
+              }
+          });
           renderer.dispose();
       };
   }, [channels, isHost, myId, sensitivity, gameOver]); // Re-init on gameover state is okay since we want to freeze, but maybe use ref for gameOver. We put it in ref if needed.
