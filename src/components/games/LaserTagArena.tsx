@@ -93,6 +93,15 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
      pitch: 0
   });
 
+  const keysRef = useRef({
+     w: false,
+     a: false,
+     s: false,
+     d: false,
+  });
+  
+  const pointerLockedRef = useRef(false);
+
   // Touch controls
   const touchStateRef = useRef({
      moveTouchId: null as number | null,
@@ -388,7 +397,16 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
               const me = gameStateRef.current.players[myId];
               if (me && me.health > 0) {
                   // Forward/Right input in local space
-                  const moveDir = new THREE.Vector3(inputRef.current.right, 0, -inputRef.current.forward);
+                  let forwardInput = inputRef.current.forward;
+                  let rightInput = inputRef.current.right;
+
+                  // Add keyboard input if any key is pressed
+                  if (keysRef.current.w) forwardInput += 1;
+                  if (keysRef.current.s) forwardInput -= 1;
+                  if (keysRef.current.a) rightInput -= 1;
+                  if (keysRef.current.d) rightInput += 1;
+
+                  const moveDir = new THREE.Vector3(rightInput, 0, -forwardInput);
                   if (moveDir.length() > 0) moveDir.normalize();
                   
                   moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), inputRef.current.yaw);
@@ -579,6 +597,54 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
       }
   };
 
+  // PC Controls (Keyboard & Mouse)
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (showSettings || gameOver) return;
+          switch(e.code) {
+              case 'KeyW': keysRef.current.w = true; break;
+              case 'KeyA': keysRef.current.a = true; break;
+              case 'KeyS': keysRef.current.s = true; break;
+              case 'KeyD': keysRef.current.d = true; break;
+          }
+      };
+      const handleKeyUp = (e: KeyboardEvent) => {
+          switch(e.code) {
+              case 'KeyW': keysRef.current.w = false; break;
+              case 'KeyA': keysRef.current.a = false; break;
+              case 'KeyS': keysRef.current.s = false; break;
+              case 'KeyD': keysRef.current.d = false; break;
+          }
+      };
+
+      const handlePointerLockChange = () => {
+          pointerLockedRef.current = document.pointerLockElement === containerRef.current;
+      };
+
+      const handleMouseMove = (e: MouseEvent) => {
+          if (pointerLockedRef.current && !showSettings && !gameOver) {
+              const dx = e.movementX || 0;
+              const dy = e.movementY || 0;
+              
+              inputRef.current.yaw -= dx * sensitivity * 0.5;
+              inputRef.current.pitch -= dy * sensitivity * 0.5;
+              inputRef.current.pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, inputRef.current.pitch));
+          }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      document.addEventListener('pointerlockchange', handlePointerLockChange);
+      document.addEventListener('mousemove', handleMouseMove);
+
+      return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+          window.removeEventListener('keyup', handleKeyUp);
+          document.removeEventListener('pointerlockchange', handlePointerLockChange);
+          document.removeEventListener('mousemove', handleMouseMove);
+      };
+  }, [showSettings, gameOver, sensitivity]);
+
   // Prevent default context menu
   useEffect(() => {
      const preventDef = (e: Event) => e.preventDefault();
@@ -597,7 +663,19 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
       onTouchCancel={handleTouchEnd}
     >
         {/* Render Container */}
-        <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+        <div 
+           ref={containerRef} 
+           className="absolute inset-0 w-full h-full cursor-crosshair" 
+           onMouseDown={(e) => {
+               if (!showSettings && !gameOver) {
+                   if (document.pointerLockElement === containerRef.current && e.button === 0) {
+                       handleShoot();
+                   } else {
+                       containerRef.current?.requestPointerLock();
+                   }
+               }
+           }}
+        />
 
         {/* HUD UI */}
         <div className="absolute inset-0 pointer-events-none flex flex-col justify-between">
