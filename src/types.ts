@@ -1,4 +1,4 @@
-export type GameType = 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'CARD_BATTLE' | 'ROCKET_LEAGUE' | 'MAGIC_TILES' | 'LASER_TAG';
+export type GameType = 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'CARD_BATTLE' | 'ROCKET_LEAGUE' | 'MAGIC_TILES' | 'LASER_TAG' | 'NEON_SNAKE';
 
 export interface BaseMessage {
   type: 'LOBBY_STATE' | 'START_GAME' | 'GAME_MESSAGE' | 'BACK_TO_LOBBY' | 'SET_ID' | 'GO_TO_LOBBY';
@@ -96,6 +96,17 @@ export const GAMES: Record<GameType, { id: GameType; name: string; description: 
       'Swipe anywhere else on the screen to look around.',
       'Tap the Shoot button on the right to fire your laser.',
       'First to 5 tags wins the game!'
+    ]
+  },
+  NEON_SNAKE: {
+    id: 'NEON_SNAKE',
+    name: 'Neon Snake',
+    description: 'Slither around, eat food to grow, and outlast your opponents!',
+    tutorial: [
+      'Drag your finger or mouse to guide your snake.',
+      'Use the boost button on the left to speed up, but it costs length!',
+      'Cut off other snakes to defeat them.',
+      'Watch your boost bar and level above your head!'
     ]
   }
 };

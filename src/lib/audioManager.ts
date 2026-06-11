@@ -261,7 +261,7 @@ export const playSound = (freq: number | string, type: Tone.ToneOscillatorType, 
     if (isMuted) return;
     try {
         const synth = new Tone.Synth({
-            oscillator: { type },
+            oscillator: { type: type as any },
             envelope: { attack: 0.01, decay: duration, sustain: 0, release: 0.1 }
         }).toDestination();
         synth.volume.value = -12;
