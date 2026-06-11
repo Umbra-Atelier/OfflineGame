@@ -524,15 +524,15 @@ export function NeonSnake({ channels, isHost, myId, myName, guests, onBackToLobb
     const onResize = () => {
       if (containerRef.current) {
         setViewport({
-            w: containerRef.current.clientWidth,
-            h: containerRef.current.clientHeight
+            w: containerRef.current.clientWidth || window.innerWidth,
+            h: containerRef.current.clientHeight || window.innerHeight
         });
       }
     };
     window.addEventListener('resize', onResize);
     onResize();
     return () => window.removeEventListener('resize', onResize);
-  }, []);
+  }, [gameState?.phase]);
 
   // Update Camera
   useEffect(() => {
@@ -540,10 +540,15 @@ export function NeonSnake({ channels, isHost, myId, myName, guests, onBackToLobb
       const mySnake = gameState.snakes[myId];
       if (mySnake && !mySnake.isDead && mySnake.segments.length > 0) {
           const head = mySnake.segments[0];
-          setCamera(prev => ({
-              x: prev.x + (head.x - prev.x) * 0.1,
-              y: prev.y + (head.y - prev.y) * 0.1
-          }));
+          setCamera(prev => {
+              if (prev.x === 0 && prev.y === 0) {
+                  return { x: head.x, y: head.y };
+              }
+              return {
+                  x: prev.x + (head.x - prev.x) * 0.1,
+                  y: prev.y + (head.y - prev.y) * 0.1
+              };
+          });
       }
   }, [gameState, myId, viewport]);
 
@@ -587,12 +592,17 @@ export function NeonSnake({ channels, isHost, myId, myName, guests, onBackToLobb
 
     // Draw Foods
     gameState.foods.forEach(f => {
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 15;
         ctx.shadowColor = f.color;
-        ctx.fillStyle = f.color;
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
         ctx.fill();
+        
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = f.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
     });
 
     // Draw Snakes
@@ -657,10 +667,14 @@ export function NeonSnake({ channels, isHost, myId, myName, guests, onBackToLobb
 
   const handleBoostStart = (e?: any) => {
       e?.preventDefault();
+      e?.stopPropagation();
+      e?.nativeEvent?.stopPropagation();
       localInput.current.boost = true;
   };
   const handleBoostEnd = (e?: any) => {
       e?.preventDefault();
+      e?.stopPropagation();
+      e?.nativeEvent?.stopPropagation();
       localInput.current.boost = false;
   };
 
@@ -742,8 +756,7 @@ export function NeonSnake({ channels, isHost, myId, myName, guests, onBackToLobb
       {/* Play Area */}
       <div 
         ref={containerRef} 
-        className="absolute inset-0 z-0 touch-none"
-        style={{ display: gameState?.phase === 'PLAYING' ? 'block' : 'none' }}
+        className={`absolute inset-0 z-0 touch-none ${gameState?.phase === 'PLAYING' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
         <canvas
            ref={canvasRef}
