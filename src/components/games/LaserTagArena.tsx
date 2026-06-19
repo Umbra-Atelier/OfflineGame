@@ -335,6 +335,52 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
       playSound(300, 'triangle', 0.1);
   };
 
+  const processHitRef = useRef<(msg: any) => void>(() => {});
+
+  processHitRef.current = (msg: any) => {
+       const p = gameStateRef.current.players[msg.hitId];
+       if (p && p.health > 0) {
+           p.health -= msg.damage;
+           if (p.health <= 0) {
+               p.health = 0;
+               playSound(150, 'sawtooth', 0.5); 
+               
+               if (gameStateRef.current.players[msg.shooterId]) {
+                   gameStateRef.current.players[msg.shooterId].score += 1;
+                   
+                   if (gameStateRef.current.players[msg.shooterId].score >= MAX_SCORE) {
+                       const winnerMsg = { winnerId: msg.shooterId, winnerName: gameStateRef.current.players[msg.shooterId].name };
+                       broadcastMsg({ type: 'LASER_TAG_STATE', state: gameStateRef.current, winner: winnerMsg });
+                       setGameOver(winnerMsg);
+                       return; 
+                   }
+               }
+
+               setTimeout(() => {
+                  if (gameStateRef.current.players[msg.hitId]) {
+                      gameStateRef.current.players[msg.hitId].health = INITIAL_HEALTH;
+                      gameStateRef.current.players[msg.hitId].position = [(Math.random() - 0.5) * 20, 1, (Math.random() - 0.5) * 20];
+                  }
+               }, 3000);
+           } else {
+               playSound(400, 'square', 0.1); 
+           }
+
+           broadcastMsg({
+               type: 'LASER_TAG_HIT_CONFIRMED',
+               shooterId: msg.shooterId,
+               hitId: msg.hitId
+           });
+           
+           if (msg.shooterId === myId) {
+               playSound(400, 'square', 0.1); // Hit marker
+           } else if (msg.hitId === myId) {
+               playSound(100, 'sawtooth', 0.2); // Flinch
+               cameraEffectRef.current.shake += 0.05;
+           }
+       }
+  };
+
   useEffect(() => {
      const handleMessage = (e: MessageEvent) => {
         try {
@@ -363,46 +409,15 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
                    spawnProjectile(msg);
                }
            } else if (msg.type === 'LASER_TAG_PROJECTILE_HIT' && isHost) {
-               const p = gameStateRef.current.players[msg.hitId];
-               if (p && p.health > 0) {
-                   p.health -= msg.damage;
-                   if (p.health <= 0) {
-                       p.health = 0;
-                       playSound(150, 'sawtooth', 0.5); 
-                       
-                       if (gameStateRef.current.players[msg.shooterId]) {
-                           gameStateRef.current.players[msg.shooterId].score += 1;
-                           
-                           if (gameStateRef.current.players[msg.shooterId].score >= MAX_SCORE) {
-                               const winnerMsg = { winnerId: msg.shooterId, winnerName: gameStateRef.current.players[msg.shooterId].name };
-                               broadcastMsg({ type: 'LASER_TAG_STATE', state: gameStateRef.current, winner: winnerMsg });
-                               setGameOver(winnerMsg);
-                               return; 
-                           }
-                       }
-
-                       setTimeout(() => {
-                          if (gameStateRef.current.players[msg.hitId]) {
-                              gameStateRef.current.players[msg.hitId].health = INITIAL_HEALTH;
-                              gameStateRef.current.players[msg.hitId].position = [(Math.random() - 0.5) * 20, 1, (Math.random() - 0.5) * 20];
-                          }
-                       }, 3000);
-                   } else {
-                       playSound(400, 'square', 0.1); 
-                   }
-
-                   broadcastMsg({
-                       type: 'LASER_TAG_HIT_CONFIRMED',
-                       shooterId: msg.shooterId,
-                       hitId: msg.hitId
-                   });
-               }
+               processHitRef.current(msg);
            } else if (msg.type === 'LASER_TAG_HIT_CONFIRMED') {
-               if (msg.shooterId === myId) {
-                   playSound(400, 'square', 0.1); // Hit marker
-               } else if (msg.hitId === myId) {
-                   playSound(100, 'sawtooth', 0.2); // Flinch
-                   cameraEffectRef.current.shake += 0.05;
+               if (!isHost) {
+                   if (msg.shooterId === myId) {
+                       playSound(400, 'square', 0.1); // Hit marker
+                   } else if (msg.hitId === myId) {
+                       playSound(100, 'sawtooth', 0.2); // Flinch
+                       cameraEffectRef.current.shake += 0.05;
+                   }
                }
            }
         } catch (err) {}
@@ -639,13 +654,18 @@ export function LaserTagArena({ channels, isHost, myId, myName, guests, onBackTo
                                   const dy = p.mesh.position.y - player.position[1];
                                   if (dy > -0.5 && dy < 2.0) {
                                       hitOccurred = true;
-                                      sendHostMessage({
+                                      const hitMsg = {
                                           type: 'LASER_TAG_PROJECTILE_HIT',
                                           projectileId: p.id,
                                           hitId: pid,
                                           damage: wep.damage,
                                           shooterId: myId
-                                      });
+                                      };
+                                      if (isHost) {
+                                          processHitRef.current(hitMsg);
+                                      } else {
+                                          sendHostMessage(hitMsg);
+                                      }
                                       break;
                                   }
                               }
