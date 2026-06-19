@@ -8,7 +8,7 @@ export function Tutorial({ onComplete }: { onComplete: () => void }) {
   const steps = [
     {
       title: "1. Install the App",
-      desc: "For the best offline experience, open this website in Google Chrome, tap the menu (three dots), and select 'Add to Home screen'. You can now open it without internet anytime!",
+      desc: "For the best offline experience, tap 'Add to Home screen' or 'Install App' in your browser menu. If asked, always select 'Install app'—this downloads the game for standalone offline use, whereas 'Add to Home screen' may just create a web link that won't work without internet.",
       icon: <Globe className="w-12 h-12 text-blue-500" />
     },
     {
@@ -81,7 +81,7 @@ export function Tutorial({ onComplete }: { onComplete: () => void }) {
             }}
             className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 hover:bg-indigo-700 transition-all active:scale-[0.98]"
           >
-            Got it <CheckCircle2 className="w-5 h-5" />
+            Finish & Install <CheckCircle2 className="w-5 h-5" />
           </button>
         )}
       </div>
