@@ -67,7 +67,18 @@ export function Tutorial({ onComplete }: { onComplete: () => void }) {
           </button>
         ) : (
           <button 
-            onClick={onComplete}
+            onClick={async () => {
+              const deferredPrompt = (window as any).deferredPrompt;
+              if (deferredPrompt) {
+                deferredPrompt.prompt();
+                try {
+                  const { outcome } = await deferredPrompt.userChoice;
+                  console.log(`User choice: ${outcome}`);
+                } catch (err) {}
+                (window as any).deferredPrompt = null;
+              }
+              onComplete();
+            }}
             className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 hover:bg-indigo-700 transition-all active:scale-[0.98]"
           >
             Got it <CheckCircle2 className="w-5 h-5" />
