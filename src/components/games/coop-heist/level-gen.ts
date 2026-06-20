@@ -63,14 +63,27 @@ function createRoomFeatures(state: GameState, roomX: number, roomY: number, size
        // drones patrol further and faster
        const patrolDist = 150 * heatSpeedMult;
        const p1 = {x: gx, y: gy};
-       const p2 = {x: gx + (prng() > 0.5 ? patrolDist : -patrolDist), y: gy + (prng() > 0.5 ? patrolDist : -patrolDist)};
+       const angleOffset = prng() * Math.PI * 2;
+       
+       // Multiple patrol points to spread them out
+       const pathLength = 3 + Math.floor(prng() * 4);
+       const path = [];
+       let cx = gx; let cy = gy;
+       for (let pIdx = 0; pIdx < pathLength; pIdx++) {
+         path.push({x: cx, y: cy});
+         cx += Math.cos(angleOffset + pIdx * Math.PI/2) * patrolDist * (prng() + 0.5);
+         cy += Math.sin(angleOffset + pIdx * Math.PI/2) * patrolDist * (prng() + 0.5);
+         // bounds check roughly
+         cx = Math.max(roomX + 50, Math.min(roomX + sizeX - 50, cx));
+         cy = Math.max(roomY + 50, Math.min(roomY + sizeY - 50, cy));
+       }
        
        // High heat -> more view angle, maybe 360 drone if heat > 80
-       const angle = state.heat > 80 ? Math.PI * 2 : (Math.PI / 2) + state.heat * 0.02;
+       const angle = state.heat > 80 ? Math.PI * 2 : (Math.PI / 3) + state.heat * 0.01;
 
        state.guards[`grd_${count}_${g}`] = { 
          id: `grd_${count}_${g}`, type: 'GUARD', pos: {x: gx, y: gy}, width: 0, height: 0, radius: 25, isStatic: false,
-         patrolPath: [p1, p2], currentPatrolIdx: 0, viewAngle: angle, viewRadius: 250 + heatViewBonus, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0
+         patrolPath: path, currentPatrolIdx: 0, viewAngle: angle, viewRadius: 180 + heatViewBonus, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0
        };
      }
   }
@@ -137,13 +150,28 @@ export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: 
     }
   });
 
+  if (levelIdx === 0) {
+    // Generate safe exterior starting zone
+    const roomW = 800;
+    const roomH = 600;
+    state.walls[`w_start_top`] = { id: `w_start_top`, type: 'WALL', pos: {x: 0, y: 0}, width: roomW, height: 20, radius: 0, isStatic: true };
+    state.walls[`w_start_bot`] = { id: `w_start_bot`, type: 'WALL', pos: {x: 0, y: roomH - 20}, width: roomW, height: 20, radius: 0, isStatic: true };
+    state.walls[`w_start_left`] = { id: `w_start_left`, type: 'WALL', pos: {x: 0, y: 0}, width: 20, height: roomH, radius: 0, isStatic: true };
+    state.walls[`w_start_right`] = { id: `w_start_right`, type: 'WALL', pos: {x: roomW - 20, y: 0}, width: 20, height: roomH, radius: 0, isStatic: true };
+    
+    state.switches['sw_start'] = { id: 'sw_start', type: 'BUTTON', pos: {x: roomW / 2 - 40, y: roomH / 2 - 40}, width: 80, height: 80, radius: 0, isStatic: true, pressed: false, targetId: 'START_HEIST' };
+    
+    state.loot = null;
+    return state;
+  }
+
   // Base bounding
   const numRooms = 3 + Math.floor(levelIdx / 5); // 3 rooms initially, increasing by 1 every 5 levels
   const roomW = 600;
   const roomH = 600;
 
   for (let i = 0; i < numRooms; i++) {
-     const seed = levelIdx * 100 + i * 37 + 42; // deterministic seed for this room based on level
+     const seed = levelIdx * 100 + i * 37 + Math.floor(Math.random() * 1000000); // randomize seed
      addPuzzleRoom(state, i * roomW, 0, roomW, roomH, seed);
   }
 

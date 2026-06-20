@@ -167,6 +167,10 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
       if (checkRectRectCollision(b, s)) pushed = true;
     });
     s.pressed = pushed;
+    
+    if (s.targetId === 'START_HEIST' && s.pressed && state.stage === 'PLAYING') {
+       state.stage = 'START_HEIST' as any;
+    }
   });
 
   // Door logic driven by switches

@@ -82,14 +82,12 @@ export default function App() {
   // Sync music to game state
   useEffect(() => {
     if (audioEnabled && hasInteracted) {
-       setupAudio().then(() => {
-          setMuted(false);
-          if (appState === 'PLAYING' && selectedGame) {
-             playMusic(selectedGame);
-          } else {
-             playMusic('LOBBY');
-          }
-       });
+       setMuted(false);
+       if (appState === 'PLAYING' && selectedGame) {
+          playMusic(selectedGame);
+       } else {
+          playMusic('LOBBY');
+       }
     } else {
        setMuted(true);
     }

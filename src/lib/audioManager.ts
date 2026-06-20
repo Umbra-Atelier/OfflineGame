@@ -66,7 +66,7 @@ export const stopMusic = () => {
   currentTrack = null;
 };
 
-export const playMusic = (track: 'LOBBY' | 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'ROCKET_LEAGUE' | 'CARD_BATTLE' | 'MAGIC_TILES' | 'LASER_TAG') => {
+export const playMusic = async (track: any) => {
   if (currentTrack === track) return; // Already playing
   if (isMuted) return;
   
@@ -75,7 +75,9 @@ export const playMusic = (track: 'LOBBY' | 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDE
 
   try {
     // Wait for context to definitely be running
-    if (Tone.context.state !== 'running') return;
+    if (Tone.context.state !== 'running') {
+       await Tone.start();
+    }
 
     if (track === 'LOBBY') {
       // Very chill, atmospheric lo-fi chords

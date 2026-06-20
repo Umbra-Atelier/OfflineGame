@@ -28,10 +28,10 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
     // Initialize host state
     if (isHost) {
       const allPlayers = [{ id: myId, name: myName }, ...guests.map(g => ({ id: g.id, name: g.name }))];
-      const initialLevel = generateLevel(1, allPlayers);
+      const initialLevel = generateLevel(0, allPlayers);
       stateRef.current = initialLevel;
       setGameState(initialLevel);
-      setshowLevelMessage(1, 'INFILTRATION LEVEL 1');
+      setshowLevelMessage(0, 'PREPARE FOR HEIST');
     }
 
     // Networking
@@ -143,6 +143,13 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
            setTimeout(() => {
               stateRef.current = generateLevel(newLvl, allPlayers, Math.max(0, (stateRef.current?.heat || 0) - 20));
            }, 3000);
+         } else if (stateRef.current.stage === 'START_HEIST' as any) {
+           const allPlayers = Object.values(stateRef.current.players).map((p: any) => ({ id: p.id, name: p.name, powerups: p.powerups || [] }));
+           setshowLevelMessage(1, `INFILTRATION LEVEL 1`);
+           channels.forEach(chan => {
+              if (chan.readyState === 'open') chan.send(JSON.stringify({ type: 'HEIST_MSG', event: 'LVL_ADV', level: 1 }));
+           });
+           stateRef.current = generateLevel(1, allPlayers, 0);
          }
       }
 
@@ -295,22 +302,57 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
 
        // Draw Guards & Vision Cones
        Object.values(state.guards).forEach((g: any) => {
+          const baseAngle = Math.atan2(g.facing.y, g.facing.x);
+
           if (g.stunTimer > 0) {
+             ctx.save();
+             ctx.translate(g.pos.x, g.pos.y);
+             ctx.rotate(baseAngle);
              ctx.fillStyle = '#a855f7';
-             ctx.beginPath(); ctx.arc(g.pos.x, g.pos.y, g.radius, 0, Math.PI*2); ctx.fill();
+             ctx.beginPath(); ctx.arc(0, 0, g.radius, 0, Math.PI*2); ctx.fill();
+             ctx.restore();
              ctx.fillStyle = '#fff'; ctx.font = '12px monospace'; ctx.textAlign='center';
              ctx.fillText('STUNNED', g.pos.x, g.pos.y - 30);
           } else {
-             ctx.fillStyle = '#ef4444';
-             ctx.beginPath(); ctx.arc(g.pos.x, g.pos.y, g.radius, 0, Math.PI*2); ctx.fill();
-
-             // Cone
+             // Vision Cone
              ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
              ctx.beginPath();
              ctx.moveTo(g.pos.x, g.pos.y);
-             const baseAngle = Math.atan2(g.facing.y, g.facing.x);
              ctx.arc(g.pos.x, g.pos.y, g.viewRadius, baseAngle - g.viewAngle/2, baseAngle + g.viewAngle/2);
              ctx.fill();
+
+             ctx.save();
+             ctx.translate(g.pos.x, g.pos.y);
+             ctx.rotate(baseAngle);
+
+             // Shoulders
+             ctx.fillStyle = '#334155';
+             ctx.fillRect(-15, -g.radius - 5, 30, g.radius * 2 + 10);
+              
+             // Body
+             ctx.fillStyle = '#1e293b';
+             ctx.beginPath();
+             ctx.arc(0, 0, g.radius, 0, Math.PI*2);
+             ctx.fill();
+              
+             // Head
+             ctx.fillStyle = '#fca5a5';
+             ctx.beginPath();
+             ctx.arc(0, 0, g.radius * 0.6, 0, Math.PI*2);
+             ctx.fill();
+              
+             // Helmet
+             ctx.fillStyle = '#0f172a';
+             ctx.beginPath();
+             ctx.arc(0, 0, g.radius * 0.65, -Math.PI/2, Math.PI/2);
+             ctx.fill();
+
+             // Rifle
+             ctx.fillStyle = '#111';
+             ctx.fillRect(g.radius * 0.5, 10, 40, 8);
+             ctx.fillRect(g.radius * 0.5, 8, 15, 12);
+              
+             ctx.restore();
           }
        });
 
@@ -318,10 +360,36 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        Object.values(state.players).forEach((p: any) => {
           if (p.health > 0) {
               ctx.globalAlpha = p.stealth ? 0.4 : 1.0;
+              
+              ctx.save();
+              ctx.translate(p.pos.x, p.pos.y);
+              let angle = 0;
+              if (p.velocity?.x || p.velocity?.y) {
+                 angle = Math.atan2(p.velocity.y, p.velocity.x);
+              }
+              ctx.rotate(angle);
+
+              // Shoulders
+              ctx.fillStyle = 'rgba(0,0,0,0.3)';
+              ctx.fillRect(-10, -p.radius - 2, 20, p.radius * 2 + 4);
+
+              // Body
               ctx.fillStyle = p.color;
               ctx.beginPath();
-              ctx.arc(p.pos.x, p.pos.y, p.radius, 0, Math.PI*2);
+              ctx.arc(0, 0, p.radius, 0, Math.PI*2);
               ctx.fill();
+              
+              // Head
+              ctx.fillStyle = '#fde047';
+              ctx.beginPath();
+              ctx.arc(0, 0, p.radius * 0.6, 0, Math.PI*2);
+              ctx.fill();
+              
+              // Backpack / Bag
+              ctx.fillStyle = '#450a0a';
+              ctx.fillRect(-p.radius - 5, -10, 10, 20);
+
+              ctx.restore();
               
               // Healthbar
               ctx.globalAlpha = 1.0;
@@ -345,10 +413,10 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        // Draw fog of war overlay
        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
        ctx.beginPath();
-       ctx.rect(0, -2000, 20000, 20000);
+       ctx.rect(-10000, -10000, 20000, 20000);
        Object.values(state.players).forEach((p: any) => {
           if (p.health > 0) {
-             ctx.moveTo(p.pos.x, p.pos.y);
+             ctx.moveTo(p.pos.x + 400, p.pos.y);
              ctx.arc(p.pos.x, p.pos.y, 400, 0, Math.PI * 2, true);
           }
        });
@@ -361,20 +429,21 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
     return () => cancelAnimationFrame(animFrame);
   }, [myId]);
 
-  // Touch joystick
+  // Touch joysticks
   const [jPos, setJpos] = useState({x: 0, y: 0});
-  const [jActive, setJactive] = useState(false);
-  const touchStartRef = useRef({x: 0, y: 0});
+  const ptrL = useRef<number | null>(null);
+  const ptrLStart = useRef({x: 0, y: 0});
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-     setJactive(true);
-     touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  const handlePtrDownL = (e: React.PointerEvent<HTMLDivElement>) => {
+     ptrL.current = e.pointerId;
+     e.currentTarget.setPointerCapture(e.pointerId);
+     ptrLStart.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-     if (!jActive) return;
-     const dxRaw = e.touches[0].clientX - touchStartRef.current.x;
-     const dyRaw = e.touches[0].clientY - touchStartRef.current.y;
+  const handlePtrMoveL = (e: React.PointerEvent<HTMLDivElement>) => {
+     if (ptrL.current !== e.pointerId) return;
+     const dxRaw = e.clientX - ptrLStart.current.x;
+     const dyRaw = e.clientY - ptrLStart.current.y;
      const dist = Math.sqrt(dxRaw*dxRaw + dyRaw*dyRaw);
      const maxT = 40;
      let nx = dxRaw; let ny = dyRaw;
@@ -385,13 +454,13 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
      const nLen = Math.sqrt(nx*nx + ny*ny);
      const nDx = nLen > 0 ? nx/maxT : 0;
      const nDy = nLen > 0 ? ny/maxT : 0;
-     // Read existing action state to preserve it
      const oldInp = inputsRef.current[myId] || {action: false, sneak: false};
      handleInputUpdate(nDx, nDy, oldInp.action, oldInp.sneak);
   };
 
-  const handleTouchEnd = () => {
-     setJactive(false);
+  const handlePtrUpL = (e: React.PointerEvent<HTMLDivElement>) => {
+     if (ptrL.current !== e.pointerId) return;
+     ptrL.current = null;
      setJpos({x:0, y:0});
      const oldInp = inputsRef.current[myId] || {action: false, sneak: false};
      handleInputUpdate(0, 0, oldInp.action, oldInp.sneak);
@@ -479,9 +548,10 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
 
       {/* On-Screen Controls */}
       <div className="absolute bottom-6 left-6 md:bottom-12 md:left-12 w-32 h-32 md:w-40 md:h-40 bg-white/10 rounded-full border-2 border-white/20 z-40"
-           onTouchStart={handleTouchStart}
-           onTouchMove={handleTouchMove}
-           onTouchEnd={handleTouchEnd}>
+           onPointerDown={handlePtrDownL}
+           onPointerMove={handlePtrMoveL}
+           onPointerUp={handlePtrUpL}
+           onPointerCancel={handlePtrUpL}>
            <div className="absolute w-12 h-12 md:w-16 md:h-16 bg-white/40 rounded-full shadow-lg"
                 style={{ 
                     left: '50%', top: '50%', 
