@@ -85,13 +85,14 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
     
     // Assign to all players
     Object.values(state.players).forEach((p: any) => {
+       if (!p.powerups) p.powerups = [];
        if (!p.powerups.includes(powerupId)) p.powerups.push(powerupId);
     });
     
     const heatIncrease = HEAT_COSTS[powerupId] || 0;
-    const nextHeat = Math.min(100, state.heat + heatIncrease);
+    const nextHeat = Math.min(100, (state.heat || 0) + heatIncrease);
 
-    const allPlayers = Object.values(state.players).map((p: any) => ({ id: p.id, name: p.name, powerups: p.powerups }));
+    const allPlayers = Object.values(state.players).map((p: any) => ({ id: p.id, name: p.name, powerups: p.powerups || [] }));
     const newLvl = state.level + 1;
     setshowLevelMessage(newLvl, `INFILTRATION SUCCESS - SECURING LEVEL ${newLvl}`);
     channels.forEach(chan => {
@@ -133,7 +134,7 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
            // Shuffle and pick 3
            stateRef.current.powerupChoices = pool.sort(() => 0.5 - Math.random()).slice(0, 3);
          } else if (stateRef.current.stage === 'GAME_OVER') {
-           const allPlayers = Object.values(stateRef.current.players).map((p: any) => ({ id: p.id, name: p.name, powerups: p.powerups }));
+           const allPlayers = Object.values(stateRef.current.players).map((p: any) => ({ id: p.id, name: p.name, powerups: p.powerups || [] }));
            const newLvl = Math.max(1, stateRef.current.level - 1);
            setshowLevelMessage(newLvl, `MISSION FAILED - REGREZZING TO LEVEL ${newLvl}`);
            channels.forEach(chan => {

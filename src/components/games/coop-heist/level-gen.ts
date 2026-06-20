@@ -126,12 +126,12 @@ export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: 
       type: 'PLAYER',
       pos: { x: 100 + (idx * 50), y: 300 },
       width: 0, height: 0, radius: 20, isStatic: false,
-      health: 100, maxHealth: 100, speed: 180 + (p.powerups?.includes('SPEED_BOOST') ? 40 : 0), 
+      health: 100, maxHealth: 100, speed: 180 + ((p.powerups || []).includes('SPEED_BOOST') ? 40 : 0), 
       stealth: false, weapon: 'NONE', score: 0,
       name: p.name, color: idx === 0 ? '#3b82f6' : idx === 1 ? '#ef4444' : '#10b981',
       velocity: {x:0, y:0}, isSlipping: false, powerups: p.powerups || []
     };
-    if (p.powerups?.includes('HEALTH_PACK')) {
+    if ((p.powerups || []).includes('HEALTH_PACK')) {
       state.players[p.id].maxHealth = 150;
       state.players[p.id].health = 150;
     }

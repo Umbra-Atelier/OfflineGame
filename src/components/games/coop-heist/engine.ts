@@ -213,7 +213,7 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
        const dx = p.pos.x - g.pos.x;
        const dy = p.pos.y - g.pos.y;
        const distSq = dx*dx + dy*dy;
-       const stealthFactor = p.powerups.includes('INVIS_CLOAK') ? 0.25 : 0.5;
+       const stealthFactor = (p.powerups || []).includes('INVIS_CLOAK') ? 0.25 : 0.5;
        const sightDist = p.stealth ? g.viewRadius * stealthFactor : g.viewRadius;
 
        if (distSq < sightDist * sightDist) {
@@ -238,7 +238,7 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
          if (g.stunTimer <= 0) {
            state.heat += 15; // Major heat increase for assaulting guards
          }
-         g.stunTimer = p.powerups.includes('STUN_BATON') ? 10.0 : 5.0;
+         g.stunTimer = (p.powerups || []).includes('STUN_BATON') ? 10.0 : 5.0;
        }
     });
   });
