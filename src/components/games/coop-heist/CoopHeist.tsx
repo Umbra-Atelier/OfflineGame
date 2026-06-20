@@ -12,6 +12,21 @@ interface CoopHeistProps {
   onBackToLobby: () => void;
 }
 
+// Global Asset Cache
+const Assets = {
+  guard: new Image(),
+  player: new Image(),
+  wall: new Image(),
+  door: new Image(),
+  block: new Image()
+};
+// Setting src will load them asynchronously. They will 404 until user uploads them to /public/assets/.
+Assets.guard.src = '/assets/guard.png';
+Assets.player.src = '/assets/player.png';
+Assets.wall.src = '/assets/wall.png';
+Assets.door.src = '/assets/door.png';
+Assets.block.src = '/assets/block.png';
+
 export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobby }: CoopHeistProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -138,7 +153,7 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
       const dt = Math.min((time - lastTime) / 1000, 0.1);
       lastTime = time;
 
-      if (stateRef.current && stateRef.current.stage === 'PLAYING') {
+      if (stateRef.current && (stateRef.current.stage === 'PLAYING' || stateRef.current.stage === 'LOBBY_ROOM')) {
          // Gather my own inputs
          const myInput = inputsRef.current[myId] || { dx:0, dy:0, action:false, sneak:false };
          inputsRef.current[myId] = myInput;
@@ -316,33 +331,51 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
 
        // Draw Blocks
        Object.values(state.blocks).forEach((b: any) => {
-          ctx.fillStyle = '#4b5563'; // Gray box
-          ctx.fillRect(b.pos.x, b.pos.y, b.width, b.height);
-          ctx.strokeStyle = '#9ca3af';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(b.pos.x, b.pos.y, b.width, b.height);
+          if (Assets.block.complete && Assets.block.naturalHeight > 0) {
+             ctx.drawImage(Assets.block, b.pos.x, b.pos.y, b.width, b.height);
+          } else {
+             ctx.fillStyle = '#4b5563'; // Gray box
+             ctx.fillRect(b.pos.x, b.pos.y, b.width, b.height);
+             ctx.strokeStyle = '#9ca3af';
+             ctx.lineWidth = 3;
+             ctx.strokeRect(b.pos.x, b.pos.y, b.width, b.height);
+          }
        });
 
        // Draw Doors
        Object.values(state.doors).forEach((d: any) => {
-          ctx.fillStyle = d.open ? 'rgba(74, 222, 128, 0.2)' : '#1f2937';
-          ctx.fillRect(d.pos.x, d.pos.y, d.width, d.height);
-          if (!d.open) {
-             ctx.strokeStyle = '#3b82f6';
-             ctx.strokeRect(d.pos.x, d.pos.y, d.width, d.height);
+          if (Assets.door.complete && Assets.door.naturalHeight > 0) {
+             if (d.open) {
+                 ctx.globalAlpha = 0.2;
+                 ctx.drawImage(Assets.door, d.pos.x, d.pos.y, d.width, d.height);
+                 ctx.globalAlpha = 1.0;
+             } else {
+                 ctx.drawImage(Assets.door, d.pos.x, d.pos.y, d.width, d.height);
+             }
+          } else {
+             ctx.fillStyle = d.open ? 'rgba(74, 222, 128, 0.2)' : '#1f2937';
+             ctx.fillRect(d.pos.x, d.pos.y, d.width, d.height);
+             if (!d.open) {
+                ctx.strokeStyle = '#3b82f6';
+                ctx.strokeRect(d.pos.x, d.pos.y, d.width, d.height);
+             }
           }
        });
 
        // Draw Walls
        Object.values(state.walls).forEach((w: any) => {
-          ctx.fillStyle = '#1e293b'; // slate-800
-          ctx.fillRect(w.pos.x, w.pos.y, w.width, w.height);
-          // inner top highlight for faux 3D
-          ctx.fillStyle = '#334155'; // slate-700
-          ctx.fillRect(w.pos.x, w.pos.y, w.width, 10);
-          ctx.strokeStyle = '#0f172a'; // slate-900 border
-          ctx.lineWidth = 2;
-          ctx.strokeRect(w.pos.x, w.pos.y, w.width, w.height);
+          if (Assets.wall.complete && Assets.wall.naturalHeight > 0) {
+             ctx.drawImage(Assets.wall, w.pos.x, w.pos.y, w.width, w.height);
+          } else {
+             ctx.fillStyle = '#1e293b'; // slate-800
+             ctx.fillRect(w.pos.x, w.pos.y, w.width, w.height);
+             // inner top highlight for faux 3D
+             ctx.fillStyle = '#334155'; // slate-700
+             ctx.fillRect(w.pos.x, w.pos.y, w.width, 10);
+             ctx.strokeStyle = '#0f172a'; // slate-900 border
+             ctx.lineWidth = 2;
+             ctx.strokeRect(w.pos.x, w.pos.y, w.width, w.height);
+          }
        });
 
        // Draw Loot
@@ -383,32 +416,28 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
              ctx.translate(g.pos.x, g.pos.y);
              ctx.rotate(baseAngle);
 
-             // Shoulders
-             ctx.fillStyle = '#334155';
-             ctx.fillRect(-15, -g.radius - 5, 30, g.radius * 2 + 10);
-              
-             // Body
-             ctx.fillStyle = '#1e293b';
-             ctx.beginPath();
-             ctx.arc(0, 0, g.radius, 0, Math.PI*2);
-             ctx.fill();
-              
-             // Head
-             ctx.fillStyle = '#fca5a5';
-             ctx.beginPath();
-             ctx.arc(0, 0, g.radius * 0.6, 0, Math.PI*2);
-             ctx.fill();
-              
-             // Helmet
-             ctx.fillStyle = '#0f172a';
-             ctx.beginPath();
-             ctx.arc(0, 0, g.radius * 0.65, -Math.PI/2, Math.PI/2);
-             ctx.fill();
-
-             // Rifle
-             ctx.fillStyle = '#111';
-             ctx.fillRect(g.radius * 0.5, 10, 40, 8);
-             ctx.fillRect(g.radius * 0.5, 8, 15, 12);
+             // Draw Image
+             if (Assets.guard.complete && Assets.guard.naturalHeight > 0) {
+                 // The image is loaded, draw it. Assuming image points UP natively, but we rotate to point RIGHT
+                 // Wait, Math.atan2(y,x) assumes 0 is RIGHT. We will draw it rotated 90 deg if the asset is facing up.
+                 // For now, draw centered
+                 ctx.rotate(Math.PI / 2); // Rotate 90 deg to map 'UP' oriented assets to 'RIGHT'
+                 ctx.drawImage(Assets.guard, -g.radius * 1.5, -g.radius * 1.5, g.radius * 3, g.radius * 3);
+             } else {
+                 // Fallback
+                 ctx.fillStyle = '#334155';
+                 ctx.fillRect(-15, -g.radius - 5, 30, g.radius * 2 + 10);
+                 ctx.fillStyle = '#1e293b';
+                 ctx.beginPath();
+                 ctx.arc(0, 0, g.radius, 0, Math.PI*2);
+                 ctx.fill();
+                 ctx.fillStyle = '#0f172a';
+                 ctx.beginPath();
+                 ctx.arc(0, 0, g.radius * 0.65, -Math.PI/2, Math.PI/2);
+                 ctx.fill();
+                 ctx.fillStyle = '#111';
+                 ctx.fillRect(g.radius * 0.5, 10, 40, 8);
+             }
               
              ctx.restore();
           }
@@ -433,31 +462,27 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
               }
               ctx.rotate(angle);
 
-              // Shoulders
-              ctx.fillStyle = 'rgba(0,0,0,0.3)';
-              ctx.fillRect(-10, -p.radius - 2, 20, p.radius * 2 + 4);
-
-              // Body
-              ctx.fillStyle = bodyColor;
-              ctx.beginPath();
-              ctx.arc(0, 0, p.radius, 0, Math.PI*2);
-              ctx.fill();
-              
-              // Head
-              ctx.fillStyle = headColor;
-              ctx.beginPath();
-              ctx.arc(0, 0, p.radius * 0.6, 0, Math.PI*2);
-              ctx.fill();
-              
-              // Backpack / Bag
-              ctx.fillStyle = bagColor;
-              ctx.fillRect(-p.radius - 5, -10, 10, 20);
-
-              // Rifle
-              ctx.fillStyle = '#222';
-              ctx.fillRect(p.radius * 0.5, 10, 40, 8);
-              ctx.fillStyle = '#111';
-              ctx.fillRect(p.radius * 0.5, 8, 15, 12);
+              // Draw Image
+              if (Assets.player.complete && Assets.player.naturalHeight > 0) {
+                 ctx.rotate(Math.PI / 2);
+                 ctx.drawImage(Assets.player, -p.radius * 1.5, -p.radius * 1.5, p.radius * 3, p.radius * 3);
+              } else {
+                 // Fallback
+                 ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                 ctx.fillRect(-10, -p.radius - 2, 20, p.radius * 2 + 4);
+                 ctx.fillStyle = bodyColor;
+                 ctx.beginPath();
+                 ctx.arc(0, 0, p.radius, 0, Math.PI*2);
+                 ctx.fill();
+                 ctx.fillStyle = headColor;
+                 ctx.beginPath();
+                 ctx.arc(0, 0, p.radius * 0.6, 0, Math.PI*2);
+                 ctx.fill();
+                 ctx.fillStyle = bagColor;
+                 ctx.fillRect(-p.radius - 5, -10, 10, 20);
+                 ctx.fillStyle = '#222';
+                 ctx.fillRect(p.radius * 0.5, 10, 40, 8);
+              }
 
               ctx.restore();
               
@@ -501,27 +526,26 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
        ctx.beginPath();
        ctx.rect(-10000, -10000, 20000, 20000);
-       Object.values(state.players).forEach((p: any) => {
-          if (p.health > 0) {
-             // Close vision circle
-             ctx.moveTo(p.pos.x + 100, p.pos.y);
-             ctx.arc(p.pos.x, p.pos.y, 100, 0, Math.PI * 2, true);
-             
-             if (!p.stealth) {
-                 // Flashlight cone
-                 const coneAngle = Math.PI / 2; // 90 degrees
-                 const coneRadius = 600;
-                 let facingAngle = 0;
-                 if (p.facing) {
-                     facingAngle = Math.atan2(p.facing.y, p.facing.x);
-                 }
-                 
-                 ctx.moveTo(p.pos.x, p.pos.y);
-                 ctx.arc(p.pos.x, p.pos.y, coneRadius, facingAngle + coneAngle/2, facingAngle - coneAngle/2, true);
-                 ctx.lineTo(p.pos.x, p.pos.y);
-             }
+       
+       if (myP && myP.health > 0) {
+          // Close vision circle
+          ctx.moveTo(myP.pos.x + 100, myP.pos.y);
+          ctx.arc(myP.pos.x, myP.pos.y, 100, 0, Math.PI * 2, true);
+          
+          if (!myP.stealth) {
+              // Flashlight cone
+              const coneAngle = Math.PI / 2; // 90 degrees
+              const coneRadius = 600;
+              let facingAngle = 0;
+              if (myP.facing) {
+                  facingAngle = Math.atan2(myP.facing.y, myP.facing.x);
+              }
+              
+              ctx.moveTo(myP.pos.x, myP.pos.y);
+              ctx.arc(myP.pos.x, myP.pos.y, coneRadius, facingAngle + coneAngle/2, facingAngle - coneAngle/2, true);
+              ctx.lineTo(myP.pos.x, myP.pos.y);
           }
-       });
+       }
        ctx.fill();
 
        // Draw guard vision cones over the fog so players can see them
@@ -537,6 +561,14 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        });
 
        ctx.restore();
+
+       // DEBUG INFO
+       ctx.fillStyle = 'white';
+       ctx.font = '16px monospace';
+       ctx.textAlign = 'left';
+       ctx.fillText(`myId: ${myId}`, 10, 30);
+       ctx.fillText(`players: ${Object.keys(state.players).join(', ')}`, 10, 50);
+
        animFrame = requestAnimationFrame(draw);
     };
     animFrame = requestAnimationFrame(draw);

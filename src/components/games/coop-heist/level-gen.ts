@@ -1,5 +1,12 @@
 import { GameState, Vector2, Player, Guard } from './types';
 
+function createPRNG(seed: number) {
+  return () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+}
+
 function createRoomFeatures(state: GameState, roomX: number, roomY: number, sizeX: number, sizeY: number, seed: number, doorId: string) {
   const count = Object.keys(state.walls).length;
   // A pseudo-random function based on seed

@@ -22,10 +22,12 @@ import { LaserTagArena } from './components/games/LaserTagArena';
 import { NeonSnake } from './components/games/NeonSnake';
 import { CoopHeist } from './components/games/coop-heist/CoopHeist';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AssetViewer } from './components/AssetViewer';
 
 type AppState =
   | 'IDLE'
   | 'TUTORIAL'
+  | 'ASSET_BROWSER'
   | 'HOST_CHOOSE_NAME'
   | 'HOSTING_OFFER'
   | 'HOSTING_SCAN_ANSWER'
@@ -536,6 +538,13 @@ export default function App() {
               <BookOpen className="w-5 h-5"/> Read Offline Setup Guide
             </button>
 
+            <button
+              onClick={() => setAppState('ASSET_BROWSER')}
+              className="w-full mt-3 py-4 bg-neutral-50 text-neutral-700 rounded-2xl font-bold hover:bg-neutral-100 transition-colors flex items-center justify-center gap-2 border border-neutral-200/60 active:scale-[0.98]"
+            >
+              <ScanLine className="w-5 h-5"/> Browse Uploaded Assets
+            </button>
+
             <div className="pt-8 space-y-4">
               <div className="flex items-center gap-4 py-2 opacity-60">
                 <div className="h-px bg-neutral-300 flex-1"></div>
@@ -562,6 +571,21 @@ export default function App() {
 
         {appState === 'TUTORIAL' && (
           <Tutorial onComplete={() => setAppState('IDLE')} />
+        )}
+
+        {appState === 'ASSET_BROWSER' && (
+          <div className="w-full h-[80vh] bg-white rounded-3xl shadow-lg border border-neutral-200 overflow-hidden flex flex-col p-6 animate-in fade-in zoom-in-95 duration-300">
+             <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-display font-black tracking-tight text-neutral-900">Asset Browser</h2>
+                <button 
+                  onClick={() => setAppState('IDLE')}
+                  className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-bold rounded-xl transition-colors"
+                >
+                  Back
+                </button>
+             </div>
+             <AssetViewer />
+          </div>
         )}
 
         {appState === 'HOST_CHOOSE_NAME' && (

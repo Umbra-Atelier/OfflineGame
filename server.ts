@@ -83,6 +83,32 @@ async function startServer() {
         .map(s => ({ id: s.id, isHost: s.data.isHost, name: s.data.name }));
   }
 
+  app.get("/api/assets", (req, res) => {
+    const rootPath = path.join(process.cwd(), "public", "assets");
+    const { opendirSync } = require('fs');
+    function getFiles(dir, baseDir) {
+      const files = [];
+      try {
+        const dirStream = opendirSync(dir);
+        let dirent;
+        while ((dirent = dirStream.readSync()) !== null) {
+          const res = path.join(dir, dirent.name);
+          if (dirent.isDirectory()) {
+            files.push(...getFiles(res, baseDir));
+          } else {
+            files.push(res.replace(baseDir, "").replace(/\\/g, "/"));
+          }
+        }
+        dirStream.closeSync();
+      } catch (e) {
+        // Handle errors if necessary
+      }
+      return files;
+    }
+    const files = getFiles(rootPath, path.join(process.cwd(), "public"));
+    res.json({ files });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -1,4 +1,4 @@
-import { GameState, Player, Vector2, BaseEntity, Guard, Block, Switch, Door, Hazard } from './types';
+import { GameState, Player, Vector2, BaseEntity, Guard, Block, Switch, Door, Hazard, Bullet } from './types';
 
 // Physics & Collision
 export function checkCircleRectCollision(circle: BaseEntity, rect: BaseEntity): boolean {
