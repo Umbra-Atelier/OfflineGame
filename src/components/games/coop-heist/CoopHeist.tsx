@@ -407,7 +407,7 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
   }, []);
 
   return (
-    <div className="w-full h-full bg-neutral-950 relative overflow-hidden select-none touch-none">
+    <div className="absolute inset-0 bg-neutral-950 overflow-hidden select-none touch-none">
       <canvas 
          ref={canvasRef} 
          width={window.innerWidth} 
