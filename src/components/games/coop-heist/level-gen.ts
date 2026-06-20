@@ -52,17 +52,25 @@ function createRoomFeatures(state: GameState, roomX: number, roomY: number, size
   }
 
   // Guard placements
-  if (hasGuards) {
-     const numGuards = 1 + Math.floor(complexity / 4);
+  const heatGuardBonus = Math.floor(state.heat / 25);
+  if (hasGuards || heatGuardBonus > 0) {
+     const numGuards = 1 + Math.floor(complexity / 4) + heatGuardBonus;
+     const heatViewBonus = state.heat * 1.2;
+     const heatSpeedMult = 1 + (state.heat / 100);
      for (let g = 0; g < numGuards; g++) {
        const gx = roomX + 150 + prng() * (sizeX - 300);
        const gy = roomY + 150 + prng() * (sizeY - 300);
+       // drones patrol further and faster
+       const patrolDist = 150 * heatSpeedMult;
        const p1 = {x: gx, y: gy};
-       const p2 = {x: gx + (prng() > 0.5 ? 150 : -150), y: gy + (prng() > 0.5 ? 150 : -150)};
+       const p2 = {x: gx + (prng() > 0.5 ? patrolDist : -patrolDist), y: gy + (prng() > 0.5 ? patrolDist : -patrolDist)};
        
+       // High heat -> more view angle, maybe 360 drone if heat > 80
+       const angle = state.heat > 80 ? Math.PI * 2 : (Math.PI / 2) + state.heat * 0.02;
+
        state.guards[`grd_${count}_${g}`] = { 
          id: `grd_${count}_${g}`, type: 'GUARD', pos: {x: gx, y: gy}, width: 0, height: 0, radius: 25, isStatic: false,
-         patrolPath: [p1, p2], currentPatrolIdx: 0, viewAngle: Math.PI / 2, viewRadius: 250, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0
+         patrolPath: [p1, p2], currentPatrolIdx: 0, viewAngle: angle, viewRadius: 250 + heatViewBonus, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0
        };
      }
   }
@@ -94,10 +102,11 @@ function addPuzzleRoom(state: GameState, roomX: number, roomY: number, sizeX: nu
   createRoomFeatures(state, roomX, roomY, sizeX, sizeY, seed, doorId);
 }
 
-export function generateLevel(levelIdx: number, playersRaw: any[]): GameState {
+export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: number = 0): GameState {
   const state: GameState = {
     level: levelIdx,
     stage: 'PLAYING',
+    heat: currentHeat,
     players: {},
     guards: {},
     blocks: {},

@@ -70,6 +70,15 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
     }, 3000);
   };
 
+  const HEAT_COSTS: Record<string, number> = {
+    SPEED_BOOST: 15,
+    INVIS_CLOAK: 25,
+    STUN_BATON: 20,
+    HEALTH_PACK: 10,
+    LIGHT_FOOT: 15,
+    THERMAL_SUIT: 15
+  };
+
   const handlePowerupSelect = (powerupId: string) => {
     if (!isHost || !stateRef.current) return;
     const state = stateRef.current;
@@ -79,13 +88,16 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        if (!p.powerups.includes(powerupId)) p.powerups.push(powerupId);
     });
     
+    const heatIncrease = HEAT_COSTS[powerupId] || 0;
+    const nextHeat = Math.min(100, state.heat + heatIncrease);
+
     const allPlayers = Object.values(state.players).map((p: any) => ({ id: p.id, name: p.name, powerups: p.powerups }));
     const newLvl = state.level + 1;
     setshowLevelMessage(newLvl, `INFILTRATION SUCCESS - SECURING LEVEL ${newLvl}`);
     channels.forEach(chan => {
        if (chan.readyState === 'open') chan.send(JSON.stringify({ type: 'HEIST_MSG', event: 'LVL_ADV', level: newLvl }));
     });
-    stateRef.current = generateLevel(newLvl, allPlayers);
+    stateRef.current = generateLevel(newLvl, allPlayers, nextHeat);
   };
 
   const onPowerupClick = (pId: string) => {
@@ -128,7 +140,7 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
               if (chan.readyState === 'open') chan.send(JSON.stringify({ type: 'HEIST_MSG', event: 'LVL_FAIL', level: newLvl }));
            });
            setTimeout(() => {
-              stateRef.current = generateLevel(newLvl, allPlayers);
+              stateRef.current = generateLevel(newLvl, allPlayers, Math.max(0, (stateRef.current?.heat || 0) - 20));
            }, 3000);
          }
       }
@@ -402,6 +414,25 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
          className="absolute inset-0 z-0 pointer-events-none"
       />
 
+      {gameState && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center z-40 bg-black/50 p-4 rounded-xl border border-red-500/20 backdrop-blur-md">
+           <div className="text-red-500 font-mono font-bold tracking-widest mb-1 shadow-red-500/50 drop-shadow-md">
+              HEAT LEVEL
+           </div>
+           <div className="w-64 h-4 bg-black/80 rounded-full border border-red-900/50 overflow-hidden">
+              <div 
+                 className="h-full bg-gradient-to-r from-red-500 to-rose-600 transition-all duration-300 relative"
+                 style={{ width: `${gameState.heat || 0}%` }}
+              >
+                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xNSIvPjwvc3ZnPg==')] opacity-50" />
+              </div>
+           </div>
+           {gameState.heat > 80 && (
+             <div className="text-red-400 font-mono text-xs mt-1 animate-pulse">LOCKDOWN IMMINENT - DRONES ACTIVE</div>
+           )}
+        </div>
+      )}
+
       {levelInfo.message && (
         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none bg-black/60 backdrop-blur-sm">
            <div className="text-center animate-bounce">
@@ -424,9 +455,12 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
                  onClick={() => onPowerupClick(pId)}
                  className="p-6 bg-neutral-900 border-2 border-amber-500/50 hover:border-amber-400 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-xl max-w-xs w-full text-left"
                >
-                 <div className="flex items-center gap-3 mb-2">
-                   <span className="text-3xl">🔌</span>
-                   <h3 className="text-xl font-bold font-mono text-white tracking-widest">{pId.replace('_', ' ')}</h3>
+                  <div className="flex items-center justify-between mb-2">
+                   <div className="flex items-center gap-3">
+                     <span className="text-3xl">🔌</span>
+                     <h3 className="text-xl font-bold font-mono text-white tracking-widest leading-tight">{pId.replace('_', ' ')}</h3>
+                   </div>
+                   <div className="text-red-500 font-bold bg-red-500/20 px-2 py-1 rounded border border-red-500/50">+{HEAT_COSTS[pId] || 0} HEAT</div>
                  </div>
                  <p className="text-neutral-400 font-mono text-sm leading-relaxed">
                    {pId === 'SPEED_BOOST' ? 'Increases base movement speed for all agents.' : 

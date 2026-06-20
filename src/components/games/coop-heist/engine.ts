@@ -226,6 +226,7 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
          if (angle < g.viewAngle / 2) {
            // Spotted!
            p.health -= 50 * dt;
+           state.heat += 10 * dt; // Using loud/caught increases heat
          }
        }
     });
@@ -234,6 +235,9 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
     Object.values(state.players).forEach(p => {
        const input = inputs[p.id];
        if (input && input.action && checkCircleCircleCollision(p, g)) {
+         if (g.stunTimer <= 0) {
+           state.heat += 15; // Major heat increase for assaulting guards
+         }
          g.stunTimer = p.powerups.includes('STUN_BATON') ? 10.0 : 5.0;
        }
     });
@@ -243,6 +247,8 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
   Object.values(state.players).forEach(p => {
     if (p.health <= 0) p.health = 0; // Trigger defeat or respawn later
   });
+
+  if (state.heat > 100) state.heat = 100;
   
   if (Object.values(state.players).every(p => p.health <= 0)) {
      state.stage = 'GAME_OVER';

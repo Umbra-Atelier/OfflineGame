@@ -61,6 +61,7 @@ export interface Hazard extends BaseEntity {
 export interface GameState {
   level: number;
   stage: 'PLAYING' | 'POWERUP_SELECT' | 'GAME_OVER' | 'VICTORY';
+  heat: number;
   players: Record<string, Player>;
   guards: Record<string, Guard>;
   blocks: Record<string, Block>;
