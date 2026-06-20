@@ -27,11 +27,29 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
   useEffect(() => {
     // Initialize host state
     if (isHost) {
-      const allPlayers = [{ id: myId, name: myName }, ...guests.map(g => ({ id: g.id, name: g.name }))];
-      const initialLevel = generateLevel(0, allPlayers);
-      stateRef.current = initialLevel;
-      setGameState(initialLevel);
-      setshowLevelMessage(0, 'PREPARE FOR HEIST');
+      if (!stateRef.current || ((stateRef.current as any).stage === 'LOBBY_ROOM')) {
+          const allPlayers = [{ id: myId, name: myName }, ...guests.map(g => ({ id: g.id, name: g.name }))];
+          const initialLevel = generateLevel(0, allPlayers);
+          stateRef.current = initialLevel;
+          setGameState(initialLevel);
+          setshowLevelMessage(0, 'PREPARE FOR HEIST');
+      } else if (stateRef.current) {
+          // Mid-game join block
+          guests.forEach((g, idx) => {
+             if (!stateRef.current!.players[g.id]) {
+                 stateRef.current!.players[g.id] = {
+                   id: g.id,
+                   type: 'PLAYER',
+                   pos: { x: 150 + idx * 50, y: 300 },
+                   width: 0, height: 0, radius: 20, isStatic: false,
+                   health: 100, maxHealth: 100, speed: 180, 
+                   stealth: false, weapon: 'RIFLE', score: 0,
+                   name: g.name, color: '#' + Math.floor(Math.random()*16777215).toString(16),
+                   velocity: {x:0, y:0}, isSlipping: false, powerups: [], facing: {x: 1, y: 0}, shootCooldown: 0
+                 };
+             }
+          });
+      }
     }
 
     // Networking
@@ -153,7 +171,7 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
          }
       }
 
-      if (stateRef.current && (stateRef.current.stage === 'PLAYING' || stateRef.current.stage === 'POWERUP_SELECT' || stateRef.current.stage === 'GAME_OVER')) {
+      if (stateRef.current && (stateRef.current.stage === 'PLAYING' || stateRef.current.stage === 'LOBBY_ROOM' || stateRef.current.stage === 'POWERUP_SELECT' || stateRef.current.stage === 'GAME_OVER')) {
          // Broadcast state
          const stateStr = JSON.stringify({ type: 'HEIST_STATE', state: stateRef.current });
          channels.forEach(chan => {
@@ -169,9 +187,9 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
   }, [isHost, channels, myId]);
 
   // Input Handling logic
-  const handleInputUpdate = (dx: number, dy: number, action: boolean, sneak: boolean) => {
+  const handleInputUpdate = (dx: number, dy: number, action: boolean, sneak: boolean, aimDx: number = 0, aimDy: number = 0, shoot: boolean = false) => {
     if (!stateRef.current) return;
-    const input = { dx, dy, action, sneak };
+    const input = { dx, dy, action, sneak, aimDx, aimDy, shoot };
     inputsRef.current[myId] = input;
     if (!isHost) {
       channels.forEach(chan => {
@@ -182,7 +200,7 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
 
   // Keyboard Fallback
   useEffect(() => {
-    const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
+    const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, up: false, down: false, left: false, right: false };
     const update = () => {
        let dx = 0; let dy = 0;
        if (keys.w) dy -= 1;
@@ -191,16 +209,24 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        if (keys.d) dx += 1;
        const len = Math.sqrt(dx*dx + dy*dy);
        if (len > 0) { dx /= len; dy /= len; }
-       handleInputUpdate(dx, dy, keys.space, keys.shift);
+       
+       let aimDx = 0; let aimDy = 0;
+       if (keys.up) aimDy -= 1;
+       if (keys.down) aimDy += 1;
+       if (keys.left) aimDx -= 1;
+       if (keys.right) aimDx += 1;
+       const shoot = aimDx !== 0 || aimDy !== 0 || keys.space;
+
+       handleInputUpdate(dx, dy, keys.space, keys.shift, aimDx, aimDy, shoot);
     };
 
     const down = (e: KeyboardEvent) => {
-      const map: Record<string, keyof typeof keys> = { w:'w', a:'a', s:'s', d:'d', ' ': 'space', shift: 'shift' };
+      const map: Record<string, keyof typeof keys> = { w:'w', a:'a', s:'s', d:'d', ' ': 'space', shift: 'shift', arrowup:'up', arrowdown:'down', arrowleft:'left', arrowright:'right' };
       const k = map[e.key.toLowerCase()];
       if (k) { keys[k] = true; update(); }
     };
     const up = (e: KeyboardEvent) => {
-      const map: Record<string, keyof typeof keys> = { w:'w', a:'a', s:'s', d:'d', ' ': 'space', shift: 'shift' };
+      const map: Record<string, keyof typeof keys> = { w:'w', a:'a', s:'s', d:'d', ' ': 'space', shift: 'shift', arrowup:'up', arrowdown:'down', arrowleft:'left', arrowright:'right' };
       const k = map[e.key.toLowerCase()];
       if (k) { keys[k] = false; update(); }
     };
@@ -224,16 +250,30 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
          return;
        }
 
-       // Clear
-       ctx.fillStyle = '#0a0a0a';
+       // Clear background
+       ctx.fillStyle = '#0f172a';
        ctx.fillRect(0, 0, cvs.width, cvs.height);
 
-       // Camera follows my player
-       const myP = state.players[myId];
+       // Camera follows my player, or host if spectator
+       let myP = state.players[myId];
+       if (!myP) myP = Object.values(state.players)[0];
+
        ctx.save();
        if (myP) {
-          ctx.translate(cvs.width/2 - myP.pos.x, cvs.height/2 - myP.pos.y);
+          ctx.translate(Math.floor(cvs.width/2 - myP.pos.x), Math.floor(cvs.height/2 - myP.pos.y));
        }
+
+       // Draw Floor Grid
+       ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+       ctx.lineWidth = 1;
+       ctx.beginPath();
+       for (let x = -2000; x < 5000; x += 50) {
+           ctx.moveTo(x, -1000); ctx.lineTo(x, 4000);
+       }
+       for (let y = -1000; y < 4000; y += 50) {
+           ctx.moveTo(-2000, y); ctx.lineTo(5000, y);
+       }
+       ctx.stroke();
 
        // Draw Hazard/Heat
        Object.values(state.hazards).forEach((hz: any) => {
@@ -265,6 +305,13 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
           ctx.strokeStyle = '#333';
           ctx.lineWidth = 2;
           ctx.stroke();
+
+          if (sw.targetId === 'START_HEIST') {
+             ctx.fillStyle = '#fff';
+             ctx.font = 'bold 16px sans-serif';
+             ctx.textAlign = 'center';
+             ctx.fillText('START', sw.pos.x + sw.width/2, sw.pos.y + sw.height/2 + 6);
+          }
        });
 
        // Draw Blocks
@@ -288,9 +335,13 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
 
        // Draw Walls
        Object.values(state.walls).forEach((w: any) => {
-          ctx.fillStyle = '#171717';
+          ctx.fillStyle = '#1e293b'; // slate-800
           ctx.fillRect(w.pos.x, w.pos.y, w.width, w.height);
-          ctx.strokeStyle = '#333';
+          // inner top highlight for faux 3D
+          ctx.fillStyle = '#334155'; // slate-700
+          ctx.fillRect(w.pos.x, w.pos.y, w.width, 10);
+          ctx.strokeStyle = '#0f172a'; // slate-900 border
+          ctx.lineWidth = 2;
           ctx.strokeRect(w.pos.x, w.pos.y, w.width, w.height);
        });
 
@@ -315,11 +366,18 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
              ctx.fillText('STUNNED', g.pos.x, g.pos.y - 30);
           } else {
              // Vision Cone
-             ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+             ctx.fillStyle = g.state === 'ALERT' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.15)';
              ctx.beginPath();
              ctx.moveTo(g.pos.x, g.pos.y);
              ctx.arc(g.pos.x, g.pos.y, g.viewRadius, baseAngle - g.viewAngle/2, baseAngle + g.viewAngle/2);
              ctx.fill();
+
+             if (g.state === 'ALERT') {
+                ctx.fillStyle = '#ef4444';
+                ctx.font = 'bold 24px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('!', g.pos.x, g.pos.y - 40);
+             }
 
              ctx.save();
              ctx.translate(g.pos.x, g.pos.y);
@@ -359,12 +417,18 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
        // Draw Players
        Object.values(state.players).forEach((p: any) => {
           if (p.health > 0) {
+              const bodyColor = p.stealth ? '#555' : p.color;
+              const headColor = p.stealth ? '#777' : '#fde047';
+              const bagColor = p.stealth ? '#333' : '#450a0a';
+              
               ctx.globalAlpha = p.stealth ? 0.4 : 1.0;
               
               ctx.save();
               ctx.translate(p.pos.x, p.pos.y);
               let angle = 0;
-              if (p.velocity?.x || p.velocity?.y) {
+              if (p.facing) {
+                 angle = Math.atan2(p.facing.y, p.facing.x);
+              } else if (p.velocity?.x || p.velocity?.y) {
                  angle = Math.atan2(p.velocity.y, p.velocity.x);
               }
               ctx.rotate(angle);
@@ -374,20 +438,26 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
               ctx.fillRect(-10, -p.radius - 2, 20, p.radius * 2 + 4);
 
               // Body
-              ctx.fillStyle = p.color;
+              ctx.fillStyle = bodyColor;
               ctx.beginPath();
               ctx.arc(0, 0, p.radius, 0, Math.PI*2);
               ctx.fill();
               
               // Head
-              ctx.fillStyle = '#fde047';
+              ctx.fillStyle = headColor;
               ctx.beginPath();
               ctx.arc(0, 0, p.radius * 0.6, 0, Math.PI*2);
               ctx.fill();
               
               // Backpack / Bag
-              ctx.fillStyle = '#450a0a';
+              ctx.fillStyle = bagColor;
               ctx.fillRect(-p.radius - 5, -10, 10, 20);
+
+              // Rifle
+              ctx.fillStyle = '#222';
+              ctx.fillRect(p.radius * 0.5, 10, 40, 8);
+              ctx.fillStyle = '#111';
+              ctx.fillRect(p.radius * 0.5, 8, 15, 12);
 
               ctx.restore();
               
@@ -410,17 +480,61 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
           }
        });
 
+       // Draw Bullets
+       if (state.bullets) {
+           ctx.fillStyle = '#fbbf24'; // amber-400
+           state.bullets.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.pos.x, b.pos.y, b.radius * 2, 0, Math.PI * 2);
+                ctx.fill();
+                // trails
+                ctx.strokeStyle = '#f59e0b'; // amber-500
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(b.pos.x, b.pos.y);
+                ctx.lineTo(b.pos.x - (b.velocity.x * 0.05), b.pos.y - (b.velocity.y * 0.05));
+                ctx.stroke();
+           });
+       }
+
        // Draw fog of war overlay
        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
        ctx.beginPath();
        ctx.rect(-10000, -10000, 20000, 20000);
        Object.values(state.players).forEach((p: any) => {
           if (p.health > 0) {
-             ctx.moveTo(p.pos.x + 400, p.pos.y);
-             ctx.arc(p.pos.x, p.pos.y, 400, 0, Math.PI * 2, true);
+             // Close vision circle
+             ctx.moveTo(p.pos.x + 100, p.pos.y);
+             ctx.arc(p.pos.x, p.pos.y, 100, 0, Math.PI * 2, true);
+             
+             if (!p.stealth) {
+                 // Flashlight cone
+                 const coneAngle = Math.PI / 2; // 90 degrees
+                 const coneRadius = 600;
+                 let facingAngle = 0;
+                 if (p.facing) {
+                     facingAngle = Math.atan2(p.facing.y, p.facing.x);
+                 }
+                 
+                 ctx.moveTo(p.pos.x, p.pos.y);
+                 ctx.arc(p.pos.x, p.pos.y, coneRadius, facingAngle + coneAngle/2, facingAngle - coneAngle/2, true);
+                 ctx.lineTo(p.pos.x, p.pos.y);
+             }
           }
        });
        ctx.fill();
+
+       // Draw guard vision cones over the fog so players can see them
+       Object.values(state.guards).forEach((g: any) => {
+          if (g.stunTimer <= 0) {
+             const baseAngle = Math.atan2(g.facing.y, g.facing.x);
+             ctx.fillStyle = g.state === 'ALERT' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.15)';
+             ctx.beginPath();
+             ctx.moveTo(g.pos.x, g.pos.y);
+             ctx.arc(g.pos.x, g.pos.y, g.viewRadius, baseAngle - g.viewAngle/2, baseAngle + g.viewAngle/2);
+             ctx.fill();
+          }
+       });
 
        ctx.restore();
        animFrame = requestAnimationFrame(draw);
@@ -462,8 +576,41 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
      if (ptrL.current !== e.pointerId) return;
      ptrL.current = null;
      setJpos({x:0, y:0});
-     const oldInp = inputsRef.current[myId] || {action: false, sneak: false};
-     handleInputUpdate(0, 0, oldInp.action, oldInp.sneak);
+     const oldInp = inputsRef.current[myId] || {action: false, sneak: false, aimDx: 0, aimDy: 0, shoot: false};
+     handleInputUpdate(0, 0, oldInp.action, oldInp.sneak, oldInp.aimDx, oldInp.aimDy, oldInp.shoot);
+  };
+
+  const [jPosR, setJposR] = useState({x: 0, y: 0});
+  const ptrR = useRef<number | null>(null);
+  const ptrRStart = useRef({x: 0, y: 0});
+
+  const handlePtrDownR = (e: React.PointerEvent<HTMLDivElement>) => {
+     ptrR.current = e.pointerId;
+     e.currentTarget.setPointerCapture(e.pointerId);
+     ptrRStart.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handlePtrMoveR = (e: React.PointerEvent<HTMLDivElement>) => {
+     if (ptrR.current !== e.pointerId) return;
+     const dxRaw = e.clientX - ptrRStart.current.x;
+     const dyRaw = e.clientY - ptrRStart.current.y;
+     const dist = Math.sqrt(dxRaw*dxRaw + dyRaw*dyRaw);
+     const maxT = 40;
+     let nx = dxRaw; let ny = dyRaw;
+     if (dist > maxT) { nx = (dxRaw/dist)*maxT; ny = (dyRaw/dist)*maxT; }
+     
+     setJposR({ x: nx, y: ny });
+     
+     const oldInp = inputsRef.current[myId] || {dx: 0, dy: 0, action: false, sneak: false};
+     handleInputUpdate(oldInp.dx, oldInp.dy, oldInp.action, oldInp.sneak, nx, ny, dist > 20); // Shoot if pushed far
+  };
+
+  const handlePtrUpR = (e: React.PointerEvent<HTMLDivElement>) => {
+     if (ptrR.current !== e.pointerId) return;
+     ptrR.current = null;
+     setJposR({x:0, y:0});
+     const oldInp = inputsRef.current[myId] || {dx: 0, dy: 0, action: false, sneak: false};
+     handleInputUpdate(oldInp.dx, oldInp.dy, oldInp.action, oldInp.sneak, 0, 0, false);
   };
 
   // Handle window resizing
@@ -560,21 +707,30 @@ export function CoopHeist({ channels, isHost, myId, myName, guests, onBackToLobb
            />
       </div>
 
-      <div className="absolute bottom-6 right-6 md:bottom-12 md:right-12 flex gap-4 md:gap-6 z-40">
+      <div className="absolute bottom-6 right-6 md:bottom-12 md:right-12 flex gap-4 md:gap-6 z-40 items-center">
          <button 
-           className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-blue-500/40 border-2 border-blue-400 active:bg-blue-500/80 backdrop-blur"
+           className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-blue-500/40 border-2 border-blue-400 active:bg-blue-500/80 backdrop-blur"
            onPointerDown={() => { const i = inputsRef.current[myId]; handleInputUpdate(i?.dx||0, i?.dy||0, i?.action||false, true); }}
            onPointerUp={() => { const i = inputsRef.current[myId]; handleInputUpdate(i?.dx||0, i?.dy||0, i?.action||false, false); }}
+           onPointerCancel={() => { const i = inputsRef.current[myId]; handleInputUpdate(i?.dx||0, i?.dy||0, i?.action||false, false); }}
          >
-           <span className="text-white font-bold opacity-80 md:text-lg tracking-widest tracking-tighter">SNEAK</span>
+           <span className="text-white font-bold opacity-80 md:text-sm tracking-widest tracking-tighter text-xs">SNEAK</span>
          </button>
-         <button 
-           className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-red-500/40 border-2 border-red-400 active:bg-red-500/80 backdrop-blur"
-           onPointerDown={() => { const i = inputsRef.current[myId]; handleInputUpdate(i?.dx||0, i?.dy||0, true, i?.sneak||false); }}
-           onPointerUp={() => { const i = inputsRef.current[myId]; handleInputUpdate(i?.dx||0, i?.dy||0, false, i?.sneak||false); }}
-         >
-           <span className="text-white font-bold text-xl md:text-2xl drop-shadow tracking-widest">STUN</span>
-         </button>
+         
+         <div className="w-32 h-32 md:w-40 md:h-40 bg-white/10 rounded-full border-2 border-white/20 relative"
+              onPointerDown={handlePtrDownR}
+              onPointerMove={handlePtrMoveR}
+              onPointerUp={handlePtrUpR}
+              onPointerCancel={handlePtrUpR}>
+              <div className="absolute w-12 h-12 md:w-16 md:h-16 bg-red-500/40 border-2 border-red-500/80 rounded-full shadow-lg flex items-center justify-center"
+                   style={{ 
+                       left: '50%', top: '50%', 
+                       transform: `translate(calc(-50% + ${jPosR.x}px), calc(-50% + ${jPosR.y}px))` 
+                   }} 
+              >
+                  <span className="text-white font-bold text-xs rotate-45 select-none pointer-events-none">AIM</span>
+              </div>
+         </div>
       </div>
 
       <button onClick={onBackToLobby} className="absolute top-4 left-4 z-50 px-4 py-2 bg-neutral-900 border border-neutral-700 text-neutral-400 hover:text-white rounded shadow text-sm font-mono tracking-wide">

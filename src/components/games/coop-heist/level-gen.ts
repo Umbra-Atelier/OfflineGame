@@ -83,7 +83,7 @@ function createRoomFeatures(state: GameState, roomX: number, roomY: number, size
 
        state.guards[`grd_${count}_${g}`] = { 
          id: `grd_${count}_${g}`, type: 'GUARD', pos: {x: gx, y: gy}, width: 0, height: 0, radius: 25, isStatic: false,
-         patrolPath: path, currentPatrolIdx: 0, viewAngle: angle, viewRadius: 180 + heatViewBonus, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0
+         patrolPath: path, currentPatrolIdx: 0, viewAngle: angle, viewRadius: 250 + heatViewBonus, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0, health: 100, shootCooldown: 0
        };
      }
   }
@@ -95,6 +95,57 @@ function createRoomFeatures(state: GameState, roomX: number, roomY: number, size
      const wx = roomX + 250;
      const wy = roomY + 100;
      state.walls[`w_i_${count}`] = { id: `w_i_${count}`, type: 'WALL', pos: {x: wx, y: wy}, width: w, height: h, radius: 0, isStatic: true };
+  }
+}
+
+function addCombatRoom(state: GameState, roomX: number, roomY: number, sizeX: number, sizeY: number, seed: number) {
+  const prng = createPRNG(seed);
+  const count = Object.keys(state.walls).length;
+  
+  // Boundary walls
+  state.walls[`w_${count}_top`] = { id: `w_${count}_top`, type: 'WALL', pos: {x: roomX, y: roomY}, width: sizeX, height: 20, radius: 0, isStatic: true };
+  state.walls[`w_${count}_bot`] = { id: `w_${count}_bot`, type: 'WALL', pos: {x: roomX, y: roomY + sizeY - 20}, width: sizeX, height: 20, radius: 0, isStatic: true };
+  state.walls[`w_${count}_left`] = { id: `w_${count}_left`, type: 'WALL', pos: {x: roomX, y: roomY}, width: 20, height: sizeY, radius: 0, isStatic: true };
+  
+  // Leave right side open for transition
+  state.walls[`w_${count}_right`] = { id: `w_${count}_right`, type: 'WALL', pos: {x: roomX + sizeX - 20, y: roomY}, width: 20, height: sizeY / 2 - 80, radius: 0, isStatic: true };
+  state.walls[`w_${count}_right_2`] = { id: `w_${count}_right_2`, type: 'WALL', pos: {x: roomX + sizeX - 20, y: roomY + sizeY / 2 + 80}, width: 20, height: sizeY / 2 - 80, radius: 0, isStatic: true };
+  
+  // Add some cover walls inside the room for gunfights
+  const numCovers = 2 + Math.floor(prng() * 4);
+  for (let i = 0; i < numCovers; i++) {
+     const cw = 40 + prng() * 100;
+     const ch = 40 + prng() * 100;
+     const cx = roomX + 100 + prng() * (sizeX - 200);
+     const cy = roomY + 100 + prng() * (sizeY - 200);
+     state.walls[`w_${count}_cover_${i}`] = { id: `w_${count}_cover_${i}`, type: 'WALL', pos: {x: cx, y: cy}, width: cw, height: ch, radius: 0, isStatic: true };
+  }
+
+  // Add Guards (Enemies)
+  const numGuards = 2 + Math.floor(prng() * 3) + Math.floor(state.heat / 30);
+  for (let g = 0; g < numGuards; g++) {
+    const gx = roomX + 100 + prng() * (sizeX - 200);
+    const gy = roomY + 100 + prng() * (sizeY - 200);
+    const patrolDist = 100 + prng() * 100;
+    
+    const angleOffset = prng() * Math.PI * 2;
+    const pathLength = 2 + Math.floor(prng() * 3);
+    const path = [];
+    let cx = gx; let cy = gy;
+    for (let pIdx = 0; pIdx < pathLength; pIdx++) {
+      path.push({x: cx, y: cy});
+      cx += Math.cos(angleOffset + pIdx * Math.PI/2) * patrolDist;
+      cy += Math.sin(angleOffset + pIdx * Math.PI/2) * patrolDist;
+      cx = Math.max(roomX + 50, Math.min(roomX + sizeX - 50, cx));
+      cy = Math.max(roomY + 50, Math.min(roomY + sizeY - 50, cy));
+    }
+    
+    // Aggressive guards have slightly wider view
+    const angle = (Math.PI / 3) + state.heat * 0.01;
+    state.guards[`grd_${count}_${g}`] = { 
+      id: `grd_${count}_${g}`, type: 'GUARD', pos: {x: gx, y: gy}, width: 0, height: 0, radius: 25, isStatic: false,
+      patrolPath: path, currentPatrolIdx: 0, viewAngle: angle, viewRadius: 300, facing: {x: 1, y: 0}, state: 'PATROL', stunTimer: 0, health: 100, shootCooldown: 0
+    };
   }
 }
 
@@ -118,7 +169,7 @@ function addPuzzleRoom(state: GameState, roomX: number, roomY: number, sizeX: nu
 export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: number = 0): GameState {
   const state: GameState = {
     level: levelIdx,
-    stage: 'PLAYING',
+    stage: levelIdx === 0 ? ('LOBBY_ROOM' as any) : 'PLAYING',
     heat: currentHeat,
     players: {},
     guards: {},
@@ -128,6 +179,7 @@ export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: 
     doors: {},
     hazards: {},
     loot: null,
+    bullets: [],
     cameraOffset: {x: 0, y: 0},
     levelTimer: 0,
     powerupChoices: []
@@ -140,9 +192,9 @@ export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: 
       pos: { x: 100 + (idx * 50), y: 300 },
       width: 0, height: 0, radius: 20, isStatic: false,
       health: 100, maxHealth: 100, speed: 180 + ((p.powerups || []).includes('SPEED_BOOST') ? 40 : 0), 
-      stealth: false, weapon: 'NONE', score: 0,
+      stealth: false, weapon: 'RIFLE', score: 0,
       name: p.name, color: idx === 0 ? '#3b82f6' : idx === 1 ? '#ef4444' : '#10b981',
-      velocity: {x:0, y:0}, isSlipping: false, powerups: p.powerups || []
+      velocity: {x:0, y:0}, isSlipping: false, powerups: p.powerups || [], facing: {x: 1, y: 0}, shootCooldown: 0
     };
     if ((p.powerups || []).includes('HEALTH_PACK')) {
       state.players[p.id].maxHealth = 150;
@@ -172,7 +224,12 @@ export function generateLevel(levelIdx: number, playersRaw: any[], currentHeat: 
 
   for (let i = 0; i < numRooms; i++) {
      const seed = levelIdx * 100 + i * 37 + Math.floor(Math.random() * 1000000); // randomize seed
-     addPuzzleRoom(state, i * roomW, 0, roomW, roomH, seed);
+     if (i === numRooms - 1 && levelIdx % 2 === 0) {
+        // sometimes put a puzzle room at the end
+        addPuzzleRoom(state, i * roomW, 0, roomW, roomH, seed);
+     } else {
+        addCombatRoom(state, i * roomW, 0, roomW, roomH, seed);
+     }
   }
 
   // Set loot at the end

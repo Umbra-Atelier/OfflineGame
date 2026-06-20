@@ -37,6 +37,38 @@ export function checkCircleCircleCollision(c1: BaseEntity, c2: BaseEntity): bool
   return Math.sqrt(dx * dx + dy * dy) < (c1.radius + c2.radius);
 }
 
+export function lineIntersectRect(x1: number, y1: number, x2: number, y2: number, rx: number, ry: number, rw: number, rh: number): boolean {
+  const left = rx, right = rx + rw, top = ry, bottom = ry + rh;
+  if ((x1 >= left && x1 <= right && y1 >= top && y1 <= bottom) ||
+      (x2 >= left && x2 <= right && y2 >= top && y2 <= bottom)) return true;
+
+  const intersects = (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, x4: number, y4: number) => {
+    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (den === 0) return false;
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
+    return t > 0 && t < 1 && u > 0 && u < 1;
+  };
+
+  return intersects(x1,y1,x2,y2, left,top, right,top) ||
+         intersects(x1,y1,x2,y2, left,bottom, right,bottom) ||
+         intersects(x1,y1,x2,y2, left,top, left,bottom) ||
+         intersects(x1,y1,x2,y2, right,top, right,bottom);
+}
+
+export function checkLineOfSight(x1: number, y1: number, x2: number, y2: number, state: GameState): boolean {
+  for (const w of Object.values(state.walls)) {
+    if (lineIntersectRect(x1, y1, x2, y2, w.pos.x, w.pos.y, w.width, w.height)) return false;
+  }
+  for (const d of Object.values(state.doors)) {
+    if (!d.open && lineIntersectRect(x1, y1, x2, y2, d.pos.x, d.pos.y, d.width, d.height)) return false;
+  }
+  for (const b of Object.values(state.blocks)) {
+    if (lineIntersectRect(x1, y1, x2, y2, b.pos.x, b.pos.y, b.width, b.height)) return false;
+  }
+  return true;
+}
+
 function resolveRectCollision(movedBlock: BaseEntity, obstacle: BaseEntity) {
   // Push movedBlock out of obstacle
   const overlapX = Math.min(movedBlock.pos.x + movedBlock.width - obstacle.pos.x, obstacle.pos.x + obstacle.width - movedBlock.pos.x);
@@ -51,7 +83,12 @@ function resolveRectCollision(movedBlock: BaseEntity, obstacle: BaseEntity) {
   }
 }
 
-export function stepEngine(state: GameState, inputs: Record<string, { dx: number, dy: number, action: boolean, sneak: boolean }>, dt: number) {
+export function stepEngine(state: GameState, inputs: Record<string, { dx: number, dy: number, aimDx?: number, aimDy?: number, shoot?: boolean, action: boolean, sneak: boolean }>, dt: number) {
+  // Update cooldowns
+  Object.values(state.players).forEach(p => { if (p.shootCooldown > 0) p.shootCooldown -= dt; });
+  Object.values(state.guards).forEach(g => { if (g.shootCooldown > 0) g.shootCooldown -= dt; });
+  state.bullets = state.bullets || [];
+
   // Reset buttons
   Object.values(state.switches).forEach(s => s.pressed = false);
 
@@ -70,6 +107,35 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
     p.pos.y += p.velocity.y * dt;
 
     p.stealth = input.sneak;
+    
+    if (input.aimDx || input.aimDy) {
+        const len = Math.sqrt((input.aimDx || 0)**2 + (input.aimDy || 0)**2);
+        if (len > 0) {
+            p.facing = { x: input.aimDx! / len, y: input.aimDy! / len };
+        }
+    } else if (input.dx || input.dy) {
+        const len = Math.sqrt((input.dx || 0)**2 + (input.dy || 0)**2);
+        if (len > 0) {
+            p.facing = { x: input.dx! / len, y: input.dy! / len };
+        }
+    }
+
+    if (input.shoot && p.weapon === 'RIFLE' && p.shootCooldown <= 0) {
+        p.shootCooldown = 0.2; // 5 shots per second
+        const bId = 'b_' + Math.random().toString(36).substr(2, 6);
+        state.bullets.push({
+            id: bId,
+            type: 'BULLET',
+            pos: { x: p.pos.x + p.facing.x * 25, y: p.pos.y + p.facing.y * 25 },
+            width: 0, height: 0, radius: 4,
+            isStatic: false,
+            ownerId: p.id,
+            velocity: { x: p.facing.x * 600, y: p.facing.y * 600 },
+            damage: 25,
+            life: 1.5
+        } as Bullet);
+        // Slight recoil or sound info here could be propagated through state if needed
+    }
 
     // Reset slipping
     p.isSlipping = false;
@@ -168,7 +234,7 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
     });
     s.pressed = pushed;
     
-    if (s.targetId === 'START_HEIST' && s.pressed && state.stage === 'PLAYING') {
+    if (s.targetId === 'START_HEIST' && s.pressed && (state.stage === 'PLAYING' || state.stage === 'LOBBY_ROOM' as any)) {
        state.stage = 'START_HEIST' as any;
     }
   });
@@ -184,8 +250,8 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
        }
      });
      
-     if (hasSwitches) {
-       d.open = allPressed;
+     if (hasSwitches && allPressed) {
+       d.open = true;
      }
   });
 
@@ -210,6 +276,24 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
         g.pos.y += (dy / dist) * moveDist;
         g.facing = { x: dx/dist, y: dy/dist };
       }
+    } else if (g.state === 'ALERT' && g.lastKnownPlayerPos) {
+      const target = g.lastKnownPlayerPos;
+      const dx = target.x - g.pos.x;
+      const dy = target.y - g.pos.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (dist < 10) {
+        g.state = 'PATROL';
+        g.alertedPlayerId = null;
+      } else {
+        // Find player speed or use default
+        const playerSpeed = Object.values(state.players).length > 0 ? Object.values(state.players)[0].speed : 200;
+        const slowSpeed = playerSpeed * 0.6; // walk slower than player
+        const moveDist = slowSpeed * dt;
+        g.pos.x += (dx / dist) * moveDist;
+        g.pos.y += (dy / dist) * moveDist;
+        g.facing = { x: dx/dist, y: dy/dist };
+      }
     }
 
     // Vision cone check for players
@@ -217,8 +301,8 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
        const dx = p.pos.x - g.pos.x;
        const dy = p.pos.y - g.pos.y;
        const distSq = dx*dx + dy*dy;
-       const stealthFactor = (p.powerups || []).includes('INVIS_CLOAK') ? 0.25 : 0.5;
-       const sightDist = p.stealth ? g.viewRadius * stealthFactor : g.viewRadius;
+       const stealthFactor = p.stealth ? 0.2 : ((p.powerups || []).includes('INVIS_CLOAK') ? 0.25 : 1.0);
+       const sightDist = g.viewRadius * stealthFactor;
 
        if (distSq < sightDist * sightDist) {
          // rough angle check
@@ -228,23 +312,94 @@ export function stepEngine(state: GameState, inputs: Record<string, { dx: number
          const dot = px * g.facing.x + py * g.facing.y;
          const angle = Math.acos(dot);
          if (angle < g.viewAngle / 2) {
-           // Spotted!
-           p.health -= 50 * dt;
-           state.heat += 10 * dt; // Using loud/caught increases heat
+           if (checkLineOfSight(g.pos.x, g.pos.y, p.pos.x, p.pos.y, state)) {
+             // Spotted! Update state and shoot
+             g.state = 'ALERT';
+             g.alertedPlayerId = p.id;
+             g.lastKnownPlayerPos = { x: p.pos.x, y: p.pos.y };
+             
+             if (g.shootCooldown <= 0 && dist > 80) { // keep some distance before shooting? Or just shoot.
+               g.shootCooldown = 0.5; // 2 shots per second
+               const bId = 'b_' + Math.random().toString(36).substr(2, 6);
+               state.bullets.push({
+                   id: bId,
+                   type: 'BULLET',
+                   pos: { x: g.pos.x + px * 25, y: g.pos.y + py * 25 },
+                   width: 0, height: 0, radius: 4,
+                   isStatic: false,
+                   ownerId: g.id,
+                   velocity: { x: px * 400, y: py * 400 },
+                   damage: 15, // guards do less damage per bullet
+                   life: 1.5
+               } as Bullet);
+             }
+           }
          }
        }
     });
-    
-    // Player attacking guard
-    Object.values(state.players).forEach(p => {
-       const input = inputs[p.id];
-       if (input && input.action && checkCircleCircleCollision(p, g)) {
-         if (g.stunTimer <= 0) {
-           state.heat += 15; // Major heat increase for assaulting guards
-         }
-         g.stunTimer = (p.powerups || []).includes('STUN_BATON') ? 10.0 : 5.0;
-       }
+
+    // Simple wall collision for guards
+    Object.values(state.walls).forEach(w => {
+      if (checkCircleRectCollision(g, w)) {
+        const closeX = Math.max(w.pos.x, Math.min(g.pos.x, w.pos.x + w.width));
+        const closeY = Math.max(w.pos.y, Math.min(g.pos.y, w.pos.y + w.height));
+        const cdist = Math.sqrt(Math.pow(g.pos.x - closeX, 2) + Math.pow(g.pos.y - closeY, 2));
+        if (cdist < g.radius && cdist > 0) {
+           const overlap = g.radius - cdist;
+           g.pos.x += ((g.pos.x - closeX) / cdist) * overlap;
+           g.pos.y += ((g.pos.y - closeY) / cdist) * overlap;
+        }
+      }
     });
+  });
+
+  // Bullet Updates
+  for (let i = state.bullets.length - 1; i >= 0; i--) {
+     const b = state.bullets[i];
+     b.pos.x += b.velocity.x * dt;
+     b.pos.y += b.velocity.y * dt;
+     b.life -= dt;
+     
+     let hit = false;
+
+     // Wall collision
+     Object.values(state.walls).forEach(w => {
+       if (!hit && checkCircleRectCollision(b, w)) hit = true;
+     });
+     Object.values(state.doors).forEach(d => {
+       if (!hit && !d.open && checkCircleRectCollision(b, d)) hit = true;
+     });
+
+     // Player & Guard collision
+     if (!hit) {
+        Object.values(state.guards).forEach(g => {
+           if (!hit && b.ownerId !== g.id && checkCircleCircleCollision(b, g)) {
+               g.health -= b.damage;
+               if (g.health <= 0) {
+                   g.health = 0;
+                   // drop loot or points?
+               }
+               hit = true;
+           }
+        });
+        Object.values(state.players).forEach(p => {
+           if (!hit && b.ownerId !== p.id && checkCircleCircleCollision(b, p)) {
+               p.health -= b.damage;
+               // getting hit increases heat?
+               state.heat += 1;
+               hit = true;
+           }
+        });
+     }
+
+     if (b.life <= 0 || hit) {
+         state.bullets.splice(i, 1);
+     }
+  }
+
+  // Remove dead guards
+  Object.keys(state.guards).forEach(gid => {
+     if (state.guards[gid].health <= 0) delete state.guards[gid];
   });
 
   // Death

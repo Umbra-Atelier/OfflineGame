@@ -1,6 +1,6 @@
 export interface Vector2 { x: number; y: number; }
 
-export type EntityType = 'PLAYER' | 'GUARD' | 'BLOCK' | 'WALL' | 'BUTTON' | 'DOOR' | 'LASER' | 'LOOT' | 'HAZARD_GREASE' | 'HAZARD_HEAT';
+export type EntityType = 'PLAYER' | 'GUARD' | 'BLOCK' | 'WALL' | 'BUTTON' | 'DOOR' | 'LASER' | 'LOOT' | 'HAZARD_GREASE' | 'HAZARD_HEAT' | 'BULLET';
 
 export interface BaseEntity {
   id: string;
@@ -12,19 +12,29 @@ export interface BaseEntity {
   isStatic: boolean;
 }
 
+export interface Bullet extends BaseEntity {
+  type: 'BULLET';
+  velocity: Vector2;
+  ownerId: string;
+  damage: number;
+  life: number;
+}
+
 export interface Player extends BaseEntity {
   type: 'PLAYER';
   health: number;
   maxHealth: number;
   speed: number;
   stealth: boolean;
-  weapon: 'NONE' | 'BATON' | 'STUN_GUN';
+  weapon: 'NONE' | 'BATON' | 'STUN_GUN' | 'RIFLE';
   score: number;
   name: string;
   color: string;
   velocity: Vector2;
   isSlipping: boolean;
   powerups: string[];
+  facing: Vector2;
+  shootCooldown: number;
 }
 
 export interface Guard extends BaseEntity {
@@ -36,6 +46,10 @@ export interface Guard extends BaseEntity {
   facing: Vector2;
   state: 'PATROL' | 'IDLE' | 'ALERT';
   stunTimer: number;
+  health: number;
+  shootCooldown: number;
+  alertedPlayerId?: string | null;
+  lastKnownPlayerPos?: Vector2 | null;
 }
 
 export interface Block extends BaseEntity {
@@ -60,7 +74,7 @@ export interface Hazard extends BaseEntity {
 
 export interface GameState {
   level: number;
-  stage: 'PLAYING' | 'POWERUP_SELECT' | 'GAME_OVER' | 'VICTORY' | 'START_HEIST';
+  stage: 'PLAYING' | 'POWERUP_SELECT' | 'GAME_OVER' | 'VICTORY' | 'START_HEIST' | 'LOBBY_ROOM';
   heat: number;
   players: Record<string, Player>;
   guards: Record<string, Guard>;
@@ -70,6 +84,7 @@ export interface GameState {
   doors: Record<string, Door>;
   hazards: Record<string, Hazard>;
   loot: BaseEntity | null;
+  bullets: Bullet[];
   cameraOffset: Vector2;
   levelTimer: number;
   powerupChoices: string[];
