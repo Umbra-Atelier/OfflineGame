@@ -1,4 +1,4 @@
-export type GameType = 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'CARD_BATTLE' | 'ROCKET_LEAGUE' | 'MAGIC_TILES' | 'LASER_TAG' | 'NEON_SNAKE';
+export type GameType = 'TAP_WAR' | 'PONG' | 'CHESS' | 'HIDDEN_ROLE' | 'CARD_BATTLE' | 'ROCKET_LEAGUE' | 'MAGIC_TILES' | 'LASER_TAG' | 'NEON_SNAKE' | 'COOP_HEIST';
 
 export interface BaseMessage {
   type: 'LOBBY_STATE' | 'START_GAME' | 'GAME_MESSAGE' | 'BACK_TO_LOBBY' | 'SET_ID' | 'GO_TO_LOBBY';
@@ -107,6 +107,17 @@ export const GAMES: Record<GameType, { id: GameType; name: string; description: 
       'Use the boost button on the left to speed up, but it costs length!',
       'Cut off other snakes to defeat them.',
       'Watch your boost bar and level above your head!'
+    ]
+  },
+  COOP_HEIST: {
+    id: 'COOP_HEIST',
+    name: 'Vault Breakers: Co-op Heist',
+    description: 'Co-op stealth action! All players infiltrate together, dodge guards, and solve physics puzzles.',
+    tutorial: [
+      'Use the joystick or WASD to move your character. Avoid guards and lasers!',
+      'Solve physics-heavy puzzles by pushing blocks and coordinating on switches.',
+      'Sneak in the dark, use weapons to take down guards, and manage your health.',
+      'Win to reach higher levels and better powerups. Lose and drop a level to farm.'
     ]
   }
 };

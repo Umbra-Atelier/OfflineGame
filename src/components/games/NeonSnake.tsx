@@ -279,7 +279,7 @@ export function NeonSnake({
       }
     });
 
-    const activeSnakes: SnakeState[] = Object.values(state.snakes).filter(
+    const activeSnakes = (Object.values(state.snakes) as SnakeState[]).filter(
       (s: any) => !s.isDead,
     );
 

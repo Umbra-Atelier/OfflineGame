@@ -680,7 +680,7 @@ export function LaserTagArena({
           camera.rotation.set(Math.PI / 4, inputRef.current.yaw, 0, "YXZ");
         }
 
-        Object.values(gameStateRef.current.players).forEach((p) => {
+        Object.values(gameStateRef.current.players).forEach((p: any) => {
           if (p.id !== myId) {
             let mesh = playerMeshesRef.current[p.id];
             if (!mesh) {
@@ -752,12 +752,12 @@ export function LaserTagArena({
             for (const [pid, player] of Object.entries(
               gameStateRef.current.players,
             )) {
-              if (pid !== myId && player.health > 0) {
-                const dx = p.mesh.position.x - player.position[0];
-                const dz = p.mesh.position.z - player.position[2];
+              if (pid !== myId && (player as any).health > 0) {
+                const dx = p.mesh.position.x - (player as any).position[0];
+                const dz = p.mesh.position.z - (player as any).position[2];
                 const distSq = dx * dx + dz * dz;
                 if (distSq < 0.6) {
-                  const dy = p.mesh.position.y - player.position[1];
+                  const dy = p.mesh.position.y - (player as any).position[1];
                   if (dy > -0.5 && dy < 2.0) {
                     hitOccurred = true;
                     const hitMsg = {
@@ -1037,7 +1037,7 @@ export function LaserTagArena({
           </div>
 
           <div className="bg-neutral-900/60 backdrop-blur-md rounded-2xl p-3 border border-white/10 flex flex-col gap-2 pointer-events-auto max-h-[40vh] overflow-y-auto">
-            {Object.values(gameStateRef.current.players)
+            {(Object.values(gameStateRef.current.players) as any[])
               .sort((a, b) => b.score - a.score)
               .map((p, i) => (
                 <div
@@ -1227,7 +1227,7 @@ export function LaserTagArena({
             <div className="text-sm font-bold text-white/50 uppercase tracking-widest pl-2 mb-2">
               Final Score
             </div>
-            {Object.values(gameStateRef.current.players)
+            {(Object.values(gameStateRef.current.players) as any[])
               .sort((a, b) => b.score - a.score)
               .map((p, i) => (
                 <div
